@@ -43,6 +43,11 @@ interface SendTextEngineArgs {
   conversationId: string
   contactId: string
   text: string
+  resolvedContext?: {
+    accessToken: string
+    phoneNumberId: string
+    contactPhone: string
+  }
 }
 
 /**
@@ -59,38 +64,50 @@ interface SendTextEngineArgs {
  */
 export async function engineSendText(
   args: SendTextEngineArgs,
-): Promise<{ whatsapp_message_id: string }> {
+): Promise<{ whatsapp_message_id: string; messageInternalId?: string | null }> {
   const db = supabaseAdmin()
 
-  const { data: contact, error: contactErr } = await db
-    .from('contacts')
-    .select('id, phone')
-    .eq('id', args.contactId)
-    .eq('account_id', args.accountId)
-    .maybeSingle()
-  if (contactErr || !contact?.phone) {
-    throw new Error('contact not found for this account')
+  let sanitized = ''
+  if (args.resolvedContext?.contactPhone) {
+    sanitized = sanitizePhoneForMeta(args.resolvedContext.contactPhone)
+  } else {
+    const { data: contact, error: contactErr } = await db
+      .from('contacts')
+      .select('id, phone')
+      .eq('id', args.contactId)
+      .eq('account_id', args.accountId)
+      .maybeSingle()
+    if (contactErr || !contact?.phone) {
+      throw new Error('contact not found for this account')
+    }
+    sanitized = sanitizePhoneForMeta(contact.phone)
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
   if (!isValidE164(sanitized)) {
-    throw new Error(`contact phone invalid: ${contact.phone}`)
+    throw new Error(`contact phone invalid`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', args.accountId)
-    .single()
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
+  let accessToken = ''
+  let phoneNumberId = ''
+  if (args.resolvedContext) {
+    accessToken = args.resolvedContext.accessToken
+    phoneNumberId = args.resolvedContext.phoneNumberId
+  } else {
+    const { data: config, error: configErr } = await db
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', args.accountId)
+      .single()
+    if (configErr || !config) {
+      throw new Error('WhatsApp not configured for this account')
+    }
+    accessToken = decrypt(config.access_token)
+    phoneNumberId = config.phone_number_id
   }
-
-  const accessToken = decrypt(config.access_token)
 
   const attempt = async (phone: string): Promise<string> => {
     const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId,
       accessToken,
       to: phone,
       text: args.text,
@@ -117,31 +134,40 @@ export async function engineSendText(
   if (lastError) throw lastError
 
   if (workingPhone !== sanitized) {
-    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+    await db.from('contacts').update({ phone: workingPhone }).eq('id', args.contactId)
   }
 
-  const { error: msgErr } = await db.from('messages').insert({
-    conversation_id: args.conversationId,
-    sender_type: 'bot',
-    content_type: 'text',
-    content_text: args.text,
-    message_id: waMessageId,
-    status: 'sent',
-  })
-  if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+  const [msgResult, convResult] = await Promise.all([
+    db
+      .from('messages')
+      .insert({
+        conversation_id: args.conversationId,
+        sender_type: 'bot',
+        content_type: 'text',
+        content_text: args.text,
+        message_id: waMessageId,
+        status: 'sent',
+      })
+      .select('id')
+      .single(),
+    db
+      .from('conversations')
+      .update({
+        last_message_text: args.text,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', args.conversationId),
+  ])
+
+  if (msgResult.error) {
+    throw new Error(`sent to Meta but DB insert failed: ${msgResult.error.message}`)
   }
 
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: args.text,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', args.conversationId)
-
-  return { whatsapp_message_id: waMessageId }
+  return { 
+    whatsapp_message_id: waMessageId, 
+    messageInternalId: msgResult.data?.id ?? null 
+  }
 }
 
 interface SendMediaEngineArgs {
@@ -155,6 +181,11 @@ interface SendMediaEngineArgs {
   caption?: string
   /** Document-only; ignored by Meta for image/video. */
   filename?: string
+  resolvedContext?: {
+    accessToken: string
+    phoneNumberId: string
+    contactPhone: string
+  }
 }
 
 /**
@@ -168,38 +199,50 @@ interface SendMediaEngineArgs {
  */
 export async function engineSendMedia(
   args: SendMediaEngineArgs,
-): Promise<{ whatsapp_message_id: string }> {
+): Promise<{ whatsapp_message_id: string; messageInternalId?: string | null }> {
   const db = supabaseAdmin()
 
-  const { data: contact, error: contactErr } = await db
-    .from('contacts')
-    .select('id, phone')
-    .eq('id', args.contactId)
-    .eq('account_id', args.accountId)
-    .maybeSingle()
-  if (contactErr || !contact?.phone) {
-    throw new Error('contact not found for this account')
+  let sanitized = ''
+  if (args.resolvedContext?.contactPhone) {
+    sanitized = sanitizePhoneForMeta(args.resolvedContext.contactPhone)
+  } else {
+    const { data: contact, error: contactErr } = await db
+      .from('contacts')
+      .select('id, phone')
+      .eq('id', args.contactId)
+      .eq('account_id', args.accountId)
+      .maybeSingle()
+    if (contactErr || !contact?.phone) {
+      throw new Error('contact not found for this account')
+    }
+    sanitized = sanitizePhoneForMeta(contact.phone)
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
   if (!isValidE164(sanitized)) {
-    throw new Error(`contact phone invalid: ${contact.phone}`)
+    throw new Error(`contact phone invalid`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', args.accountId)
-    .single()
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
+  let accessToken = ''
+  let phoneNumberId = ''
+  if (args.resolvedContext) {
+    accessToken = args.resolvedContext.accessToken
+    phoneNumberId = args.resolvedContext.phoneNumberId
+  } else {
+    const { data: config, error: configErr } = await db
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', args.accountId)
+      .single()
+    if (configErr || !config) {
+      throw new Error('WhatsApp not configured for this account')
+    }
+    accessToken = decrypt(config.access_token)
+    phoneNumberId = config.phone_number_id
   }
-
-  const accessToken = decrypt(config.access_token)
 
   const attempt = async (phone: string): Promise<string> => {
     const r = await sendMediaMessage({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId,
       accessToken,
       to: phone,
       kind: args.kind,
@@ -229,7 +272,7 @@ export async function engineSendMedia(
   if (lastError) throw lastError
 
   if (workingPhone !== sanitized) {
-    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+    await db.from('contacts').update({ phone: workingPhone }).eq('id', args.contactId)
   }
 
   // content_type='image'|'video'|'document' — these are already in the
@@ -237,28 +280,38 @@ export async function engineSendMedia(
   // content_text carries the caption (or empty) so the conversation
   // list preview shows something meaningful when the user glances at it.
   const preview = args.caption?.trim() || `[${args.kind}]`
-  const { error: msgErr } = await db.from('messages').insert({
-    conversation_id: args.conversationId,
-    sender_type: 'bot',
-    content_type: args.kind,
-    content_text: args.caption ?? null,
-    message_id: waMessageId,
-    status: 'sent',
-  })
-  if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+
+  const [msgResult, convResult] = await Promise.all([
+    db
+      .from('messages')
+      .insert({
+        conversation_id: args.conversationId,
+        sender_type: 'bot',
+        content_type: args.kind,
+        content_text: args.caption ?? null,
+        message_id: waMessageId,
+        status: 'sent',
+      })
+      .select('id')
+      .single(),
+    db
+      .from('conversations')
+      .update({
+        last_message_text: preview,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', args.conversationId),
+  ])
+
+  if (msgResult.error) {
+    throw new Error(`sent to Meta but DB insert failed: ${msgResult.error.message}`)
   }
 
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: preview,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', args.conversationId)
-
-  return { whatsapp_message_id: waMessageId }
+  return { 
+    whatsapp_message_id: waMessageId, 
+    messageInternalId: msgResult.data?.id ?? null 
+  }
 }
 
 interface SendInteractiveButtonsEngineArgs {
@@ -270,6 +323,11 @@ interface SendInteractiveButtonsEngineArgs {
   buttons: InteractiveButton[]
   headerText?: string
   footerText?: string
+  resolvedContext?: {
+    accessToken: string
+    phoneNumberId: string
+    contactPhone: string
+  }
 }
 
 interface SendInteractiveListEngineArgs {
@@ -282,6 +340,11 @@ interface SendInteractiveListEngineArgs {
   sections: InteractiveListSection[]
   headerText?: string
   footerText?: string
+  resolvedContext?: {
+    accessToken: string
+    phoneNumberId: string
+    contactPhone: string
+  }
 }
 
 /**
@@ -297,7 +360,7 @@ interface SendInteractiveListEngineArgs {
  */
 export async function engineSendInteractiveButtons(
   args: SendInteractiveButtonsEngineArgs,
-): Promise<{ whatsapp_message_id: string }> {
+): Promise<{ whatsapp_message_id: string; messageInternalId?: string | null }> {
   return sendInteractiveViaMeta({ ...args, kind: 'buttons' })
 }
 
@@ -307,7 +370,7 @@ export async function engineSendInteractiveButtons(
  */
 export async function engineSendInteractiveList(
   args: SendInteractiveListEngineArgs,
-): Promise<{ whatsapp_message_id: string }> {
+): Promise<{ whatsapp_message_id: string; messageInternalId?: string | null }> {
   return sendInteractiveViaMeta({ ...args, kind: 'list' })
 }
 
@@ -317,42 +380,51 @@ type SendInput =
 
 async function sendInteractiveViaMeta(
   input: SendInput,
-): Promise<{ whatsapp_message_id: string }> {
+): Promise<{ whatsapp_message_id: string; messageInternalId?: string | null }> {
   const db = supabaseAdmin()
 
-  // Scope the contact + whatsapp_config lookups by account_id —
-  // same defense-in-depth rationale as automations/meta-send.ts.
-  // Migration 017 moved both tables to account-scoped tenancy.
-  const { data: contact, error: contactErr } = await db
-    .from('contacts')
-    .select('id, phone')
-    .eq('id', input.contactId)
-    .eq('account_id', input.accountId)
-    .maybeSingle()
-  if (contactErr || !contact?.phone) {
-    throw new Error('contact not found for this account')
+  let sanitized = ''
+  if (input.resolvedContext?.contactPhone) {
+    sanitized = sanitizePhoneForMeta(input.resolvedContext.contactPhone)
+  } else {
+    const { data: contact, error: contactErr } = await db
+      .from('contacts')
+      .select('id, phone')
+      .eq('id', input.contactId)
+      .eq('account_id', input.accountId)
+      .maybeSingle()
+    if (contactErr || !contact?.phone) {
+      throw new Error('contact not found for this account')
+    }
+    sanitized = sanitizePhoneForMeta(contact.phone)
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
   if (!isValidE164(sanitized)) {
-    throw new Error(`contact phone invalid: ${contact.phone}`)
+    throw new Error(`contact phone invalid`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .single()
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
+  let accessToken = ''
+  let phoneNumberId = ''
+  if (input.resolvedContext) {
+    accessToken = input.resolvedContext.accessToken
+    phoneNumberId = input.resolvedContext.phoneNumberId
+  } else {
+    const { data: config, error: configErr } = await db
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', input.accountId)
+      .single()
+    if (configErr || !config) {
+      throw new Error('WhatsApp not configured for this account')
+    }
+    accessToken = decrypt(config.access_token)
+    phoneNumberId = config.phone_number_id
   }
-
-  const accessToken = decrypt(config.access_token)
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'buttons') {
       const r = await sendInteractiveButtons({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId,
         accessToken,
         to: phone,
         bodyText: input.bodyText,
@@ -363,7 +435,7 @@ async function sendInteractiveViaMeta(
       return r.messageId
     }
     const r = await sendInteractiveList({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId,
       accessToken,
       to: phone,
       bodyText: input.bodyText,
@@ -397,7 +469,7 @@ async function sendInteractiveViaMeta(
   if (lastError) throw lastError
 
   if (workingPhone !== sanitized) {
-    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+    await db.from('contacts').update({ phone: workingPhone }).eq('id', input.contactId)
   }
 
   // Persist the bot's prompt to the messages table so it appears in
@@ -409,26 +481,35 @@ async function sendInteractiveViaMeta(
   // We do NOT set interactive_reply_id here — that column is reserved
   // for the customer's tap on this message, populated by the webhook
   // when their reply arrives.
-  const { error: msgErr } = await db.from('messages').insert({
-    conversation_id: input.conversationId,
-    sender_type: 'bot',
-    content_type: 'interactive',
-    content_text: input.bodyText,
-    message_id: waMessageId,
-    status: 'sent',
-  })
-  if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+  const [msgResult, convResult] = await Promise.all([
+    db
+      .from('messages')
+      .insert({
+        conversation_id: input.conversationId,
+        sender_type: 'bot',
+        content_type: 'interactive',
+        content_text: input.bodyText,
+        message_id: waMessageId,
+        status: 'sent',
+      })
+      .select('id')
+      .single(),
+    db
+      .from('conversations')
+      .update({
+        last_message_text: input.bodyText,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', input.conversationId),
+  ])
+
+  if (msgResult.error) {
+    throw new Error(`sent to Meta but DB insert failed: ${msgResult.error.message}`)
   }
 
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: input.bodyText,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', input.conversationId)
-
-  return { whatsapp_message_id: waMessageId }
+  return { 
+    whatsapp_message_id: waMessageId, 
+    messageInternalId: msgResult.data?.id ?? null 
+  }
 }

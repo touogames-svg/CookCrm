@@ -339,6 +339,11 @@ export interface DispatchInboundInput {
   contactId: string;
   conversationId: string;
   message: ParsedInbound;
+  resolvedContext?: {
+    accessToken: string;
+    phoneNumberId: string;
+    contactPhone: string;
+  };
 }
 
 export interface DispatchInboundResult {
