@@ -141,7 +141,7 @@ async function run() {
             rows: [
               { reply_id: 'opt_6', title: '6️⃣ एग्जाम स्पेशल', description: 'एग्जाम के लिए विशेष भोजन', next_node_key: 'resp_6' },
               { reply_id: 'opt_7', title: '7️⃣ लेट नाइट स्नैक्स', description: 'रात के स्नैक्स ऑर्डर करें', next_node_key: 'resp_7' },
-              { reply_id: 'opt_8', title: '8️⃣ कल की सब्जी वोट', description: 'कल की सब्जी के लिए वोट', next_node_key: 'resp_8' },
+              { reply_id: 'opt_8', title: '8️⃣ Vegetable Voting', description: 'कल के भोजन के लिए वोट करें', next_node_key: 'resp_8' },
               { reply_id: 'opt_9', title: '9️⃣ आज का टिफिन', description: 'आज का ऑर्डर करें', next_node_key: 'resp_9' },
               { reply_id: 'opt_more', title: '➡️ और विकल्प...', description: 'अतिरिक्त सेवाएं देखें', next_node_key: 'more_menu' },
             ],
@@ -265,14 +265,14 @@ async function run() {
       flow_id: flow.id, node_key: 'resp_8', node_type: 'send_message',
       config: {
         text:
-          '🗳️ *कल की सब्जी के लिए वोट करें*\n\n' +
-          'आपकी पसंद क्या है? नीचे से एक नंबर टाइप करें:\n\n' +
-          '1. 🥔 आलू-टमाटर\n' +
-          '2. 🌶️ मटर-पनीर\n' +
-          '3. 🍆 बैंगन भर्ता\n' +
-          '4. 🥬 पालक-दाल\n' +
-          '5. 🎃 कद्दू की सब्जी\n\n' +
-          'रात 8 बजे तक वोट करें — सबसे ज्यादा वोट वाली सब्जी कल बनेगी! 🙏',
+          '🗳️ *Vegetable Voting — कल के भोजन का चयन*\n\n' +
+          'कल के टिफिन के लिए अपनी पसंद का कॉम्बिनेशन चुनें। नीचे से एक नंबर टाइप करें:\n\n' +
+          '1. 🍲 पनीर दो प्याजा + सूखी गोभी गाजर (Veg + Veg)\n' +
+          '2. 🫑 कढ़ाई पनीर + आलू शिमला मिर्च (Veg + Veg)\n' +
+          '3. 🥣 दाल फ्राई + भुना मसाला बैंगन (Dal + Veg)\n' +
+          '4. 🥣 दाल तड़का + भिंडी दो प्याजा (Dal + Veg)\n' +
+          '5. 🥣 दाल मखनी + आलू जीरा (Dal + Veg)\n\n' +
+          'रात 8 बजे तक वोट करें — सबसे ज्यादा वोट वाले कॉम्बिनेशन को कल के मेनू में शामिल किया जाएगा! 🙏',
         next_node_key: 'end',
       },
     },
