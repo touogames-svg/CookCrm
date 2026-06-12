@@ -886,6 +886,9 @@ export async function dispatchAnnapurnaFlow(
       const totalPrice = activeRun.vars.reg_price as number;
       const regLocation = activeRun.vars.reg_location as string;
 
+      // Generate a unique order number (e.g. AMAR-XXXX)
+      const orderNumber = `AMAR-${Math.floor(1000 + Math.random() * 9000)}`;
+
       // Create a CRM deal in pipeline stage (best-effort)
       try {
         // Fetch first pipeline stage to put the deal in
@@ -907,7 +910,7 @@ export async function dispatchAnnapurnaFlow(
             title: `${regName} — Tiffin Registration`,
             value: totalPrice,
             currency: "INR",
-            notes: `Plan: ${getPlanName(regPlan)}\nQty: ${regQty}\nLocation: ${regLocation}`,
+            notes: `Order No: ${orderNumber}\nPlan: ${getPlanName(regPlan)}\nQty: ${regQty}\nLocation: ${regLocation}`,
             status: "active",
           });
         }
@@ -920,11 +923,13 @@ export async function dispatchAnnapurnaFlow(
         userId: input.userId,
         conversationId,
         contactId,
-        text: `✅ *ऑर्डर सफलता पूर्वक प्लेस हो गया है!*\n\n💳 कृपया भुगतान करने के लिए इस UPI ID पर राशि भेजें:\n👉 *annapurnarasoi@upi* (कुल राशि: *₹${totalPrice}*)\n\nभुगतान करने के बाद, कृपया भुगतान के *स्क्रीनशॉट (Payment Proof)* को यहाँ भेजें। 🙏`,
+        text: `✅ *ऑर्डर सफलता पूर्वक प्लेस हो गया है!*\n\n📦 *ऑर्डर नंबर*: \`${orderNumber}\`\n\n💳 कृपया भुगतान करने के लिए इस UPI ID पर राशि भेजें:\n👉 *annapurnarasoi@upi* (कुल राशि: *₹${totalPrice}*)\n\nभुगतान करने के बाद, कृपया भुगतान के *स्क्रीनशॉट (Payment Proof)* को यहाँ भेजें। 🙏`,
         resolvedContext: input.resolvedContext,
       });
 
-      await updateRunState("reg_payment");
+      await updateRunState("reg_payment", {
+        reg_order_number: orderNumber
+      });
       return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
     }
 
@@ -942,7 +947,7 @@ export async function dispatchAnnapurnaFlow(
       contactId,
       bodyText: `📋 *रजिस्ट्रेशन (5/6) — ऑर्डर समरी*\n\nकृपया विवरण की जांच करें:\n👤 नाम: *${regName}*\n📱 मोबाइल: *${regPhone}*\n📍 लोकेशन: *${regLocation}*\n🍛 प्लान: *${getPlanName(planId)}*\n👥 मात्रा: *${qty} व्यक्ति*\n💰 कुल राशि: *₹${totalPrice}*\n\nक्या आप इस ऑर्डर को पक्का करना चाहते हैं?`,
       buttons: [
-        { id: "reg_confirm_order", title: "हाँ, ऑर्डर पक्का करें" },
+        { id: "reg_confirm_order", title: "हाँ, पक्का करें" },
         { id: "go_back", title: "रद्द करें" },
       ],
       resolvedContext: input.resolvedContext,
@@ -987,7 +992,7 @@ export async function dispatchAnnapurnaFlow(
       userId: input.userId,
       conversationId,
       contactId,
-      text: `⚠️ कृपया अपने भुगतान का *स्क्रीनशॉट (Payment Proof)* यहाँ भेजें ताकि हम आपके ऑर्डर की पुष्टि कर सकें। 🙏\nUPI ID: *annapurnarasoi@upi*\nकुल राशि: *₹${activeRun.vars.reg_price}*`,
+      text: `⚠️ कृपया अपने भुगतान का *स्क्रीनशॉट (Payment Proof)* यहाँ भेजें ताकि हम आपके ऑर्डर की पुष्टि कर सकें। 🙏\n\n📦 *ऑर्डर नंबर*: \`${activeRun.vars.reg_order_number || "N/A"}\`\n💳 UPI ID: *annapurnarasoi@upi*\n💰 कुल राशि: *₹${activeRun.vars.reg_price}*`,
       resolvedContext: input.resolvedContext,
     });
     return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };

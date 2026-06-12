@@ -50,6 +50,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [activeRun, setActiveRun] = useState<any>(null);
+  const [paymentRef, setPaymentRef] = useState("");
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -84,11 +85,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     if (notesRes.data) setNotes(notesRes.data);
     if (tagsRes.data) {
       const mapped = tagsRes.data
-        .filter((ct: Record<string, unknown>) => ct.tags)
-        .map((ct: Record<string, unknown>) => ({
-          ...(ct.tags as Tag),
-          contact_tag_id: ct.id as string,
-        }));
+          .filter((ct: Record<string, unknown>) => ct.tags)
+          .map((ct: Record<string, unknown>) => ({
+            ...(ct.tags as Tag),
+            contact_tag_id: ct.id as string,
+          }));
       setTags(mapped);
     }
     if (runRes.data) {
@@ -145,8 +146,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   }, [contact, newNote, accountId]);
 
   const handleConfirmPayment = useCallback(async () => {
-    if (!contact || !activeRun) return;
+    if (!contact || !activeRun || !paymentRef.trim()) return;
     const supabase = createClient();
+
+    const orderNumber = activeRun.vars.reg_order_number || "N/A";
+    const referenceNo = paymentRef.trim();
 
     // 1) Complete active flow run
     const { error: runErr } = await supabase
@@ -155,6 +159,10 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         status: "completed",
         ended_at: new Date().toISOString(),
         end_reason: "payment_verified_by_agent",
+        vars: {
+          ...activeRun.vars,
+          payment_ref: referenceNo,
+        },
       })
       .eq("id", activeRun.id);
 
@@ -181,7 +189,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           body: JSON.stringify({
             conversation_id: conv.id,
             message_type: "text",
-            content_text: "🎉 *पेमेंट कन्फर्म हो गया है!*\n\nमाँ अन्नपूर्णा रसोई की ओर से आपका भुगतान प्राप्त हो गया है। आपकी सब्सक्रिप्शन अब एक्टिव है। स्वादिष्ट और शुद्ध भोजन के लिए धन्यवाद! 🙏",
+            content_text: `🎉 *पेमेंट कन्फर्म हो गया है!*\n\nमाँ अन्नपूर्णा रसोई की ओर से आपका भुगतान प्राप्त हो गया है।\n\n📦 *ऑर्डर नंबर*: \`${orderNumber}\`\n💳 *पेमेंट रेफरेंस*: \`${referenceNo}\`\n\nआपकी सब्सक्रिप्शन अब एक्टिव है। स्वादिष्ट और शुद्ध भोजन के लिए धन्यवाद! 🙏`,
           }),
         });
       } catch (sendErr) {
@@ -190,8 +198,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
 
     setActiveRun(null);
+    setPaymentRef("");
     fetchContactData();
-  }, [contact, activeRun, fetchContactData]);
+  }, [contact, activeRun, paymentRef, fetchContactData]);
 
   if (!contact) {
     return (
@@ -293,6 +302,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                   Payment Verification
                 </h4>
                 <div className="mt-2 text-xs space-y-1 text-slate-300">
+                  {activeRun.vars.reg_order_number && (
+                    <p>📦 Order No: <span className="font-semibold text-white">{activeRun.vars.reg_order_number}</span></p>
+                  )}
                   <p>🍛 Plan: <span className="font-semibold text-white">{getPlanName(activeRun.vars.reg_plan)}</span></p>
                   <p>👥 Plates: <span className="font-semibold text-white">{activeRun.vars.reg_qty}</span></p>
                   <p>💰 Amount: <span className="font-semibold text-white">₹{activeRun.vars.reg_price}</span></p>
@@ -312,9 +324,19 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     </div>
                   )}
                 </div>
+
+                <input
+                  type="text"
+                  placeholder="Enter Payment Ref (e.g. UPI ID)"
+                  value={paymentRef}
+                  onChange={(e) => setPaymentRef(e.target.value)}
+                  className="mt-3 w-full rounded border border-slate-700 bg-slate-800/80 px-2 py-1 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                />
+
                 <Button
                   onClick={handleConfirmPayment}
-                  className="mt-3 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-1.5 h-auto"
+                  disabled={!paymentRef.trim()}
+                  className="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-1.5 h-auto disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Confirm Payment
                 </Button>
