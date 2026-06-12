@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => null)) as {
     runId?: string
-    action?: 'confirm_payment' | 'dispatch_order'
+    action?: 'confirm_payment' | 'dispatch_order' | 'toggle_pause'
     paymentRef?: string
     riderName?: string
     trackingLink?: string
@@ -95,6 +95,66 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true })
+  }
+
+  if (body.action === 'toggle_pause') {
+    const isCurrentlyPaused = !!run.vars?.is_paused
+    let updatedVars = { ...(run.vars || {}) }
+
+    function getLocalISODate(date: Date): string {
+      const offset = 5.5 * 60 * 60 * 1000
+      const istDate = new Date(date.getTime() + offset)
+      return istDate.toISOString().split('T')[0]
+    }
+
+    function getDatesBetween(startDateStr: string, endDateStr: string): string[] {
+      const start = new Date(startDateStr)
+      const end = new Date(endDateStr)
+      const dates: string[] = []
+      start.setHours(0, 0, 0, 0)
+      end.setHours(0, 0, 0, 0)
+      while (start <= end) {
+        dates.push(getLocalISODate(start))
+        start.setDate(start.getDate() + 1)
+      }
+      return dates
+    }
+
+    if (isCurrentlyPaused) {
+      // Resume
+      let pausedDates = [...(run.vars?.paused_dates || [])]
+      if (run.vars?.paused_at) {
+        const pausedAtDate = getLocalISODate(new Date(run.vars.paused_at))
+        const yesterday = new Date()
+        yesterday.setDate(yesterday.getDate() - 1)
+        const yesterdayStr = getLocalISODate(yesterday)
+        
+        if (pausedAtDate <= yesterdayStr) {
+          const dates = getDatesBetween(run.vars.paused_at, yesterdayStr)
+          pausedDates = Array.from(new Set([...pausedDates, ...dates]))
+        }
+      }
+      updatedVars.is_paused = false
+      updatedVars.paused_at = null
+      updatedVars.paused_dates = pausedDates
+    } else {
+      // Pause
+      updatedVars.is_paused = true
+      updatedVars.paused_at = new Date().toISOString()
+    }
+
+    const { error: updateErr } = await admin
+      .from('flow_runs')
+      .update({
+        vars: updatedVars,
+      })
+      .eq('id', run.id)
+
+    if (updateErr) {
+      return NextResponse.json({ error: updateErr.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, is_paused: updatedVars.is_paused })
   }
 
   return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })

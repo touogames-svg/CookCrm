@@ -75,7 +75,7 @@ const WEEKLY_MENU_TEXT = `╔══════════════╗
 🙏 Thank You 🙏`;
 
 const RATE_CARD_TEXT = `╔════════════════════╗
-🍽️ *TIFFIN PLANS & PRICING* 🍽️
+🍽️ *TIFFIN PACKAGE DETAILS* 🍽️
 ╚════════════════════╝
 
 🎉 *पहली थाली सिर्फ ₹49* 🎉
@@ -255,10 +255,140 @@ const VOTING_OPTIONS: Record<
   },
 };
 
+// ── Calendar & Subscription helpers ──────────────────────────
+
+async function getSubscriptionRun(db: any, contactId: string) {
+  const { data: runs } = await db
+    .from("flow_runs")
+    .select("*")
+    .eq("contact_id", contactId)
+    .order("started_at", { ascending: false });
+  
+  if (!runs) return null;
+  return runs.find((r: any) => r.vars && r.vars.reg_order_number && (r.status === "completed" || r.vars.payment_ref));
+}
+
+function getLocalISODate(date: Date): string {
+  // IST is UTC+5:30
+  const offset = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(date.getTime() + offset);
+  return istDate.toISOString().split("T")[0];
+}
+
+function getDatesBetween(startDateStr: string, endDateStr: string): string[] {
+  const start = new Date(startDateStr);
+  const end = new Date(endDateStr);
+  const dates: string[] = [];
+  
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  
+  while (start <= end) {
+    dates.push(getLocalISODate(start));
+    start.setDate(start.getDate() + 1);
+  }
+  return dates;
+}
+
+function generateCalendarText(orderRun: any): string {
+  const vars = orderRun.vars || {};
+  const pausedDates = new Set<string>(vars.paused_dates || []);
+  const deliveredDates = new Set<string>(vars.delivered_dates || []);
+  const isPaused = !!vars.is_paused;
+  const pausedAtStr = vars.paused_at;
+  const dispatchedDateStr = vars.dispatched_at ? getLocalISODate(new Date(vars.dispatched_at)) : null;
+
+  const startStr = vars.dispatched_at || orderRun.ended_at || orderRun.started_at;
+  const startDate = new Date(startStr);
+  
+  const now = new Date();
+  const todayStr = getLocalISODate(now);
+  const pausedAtDateStr = pausedAtStr ? getLocalISODate(new Date(pausedAtStr)) : null;
+
+  const daysList: { dateStr: string; label: string; status: 'delivered' | 'paused' | 'pending' }[] = [];
+
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+    const dStr = getLocalISODate(d);
+    
+    const dayNum = d.getDate();
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthLabel = months[d.getMonth()];
+    const label = `${dayNum}-${monthLabel}`;
+
+    let status: 'delivered' | 'paused' | 'pending' = 'pending';
+
+    if (pausedDates.has(dStr)) {
+      status = 'paused';
+    } else if (isPaused && pausedAtDateStr && dStr >= pausedAtDateStr) {
+      status = 'paused';
+    } else if (deliveredDates.has(dStr) || (dispatchedDateStr && dStr === dispatchedDateStr)) {
+      status = 'delivered';
+    } else if (dStr < todayStr) {
+      status = 'delivered';
+    }
+
+    daysList.push({ dateStr: dStr, label, status });
+  }
+
+  let txt = `📅 *टिफिन डिलीवरी कैलेंडर (Monthly Package)*\n\n`;
+  txt += `✅ - Delivered (डिलीवर हो गया)\n`;
+  txt += `🟡 - Paused (रोका गया)\n`;
+  txt += `🔵 - To be delivered (होने वाला)\n\n`;
+
+  for (let w = 0; w < 5; w++) {
+    txt += `*सप्ताह ${w + 1} (Week ${w + 1}):*\n`;
+    const weekDays = daysList.slice(w * 7, (w + 1) * 7);
+    if (weekDays.length === 0) break;
+
+    const part1 = weekDays.slice(0, 4);
+    const part2 = weekDays.slice(4);
+
+    const formatDay = (item: typeof daysList[0]) => {
+      const emoji = item.status === 'delivered' ? '✅' : item.status === 'paused' ? '🟡' : '🔵';
+      return `${emoji} ${item.label}`;
+    };
+
+    txt += part1.map(formatDay).join("  |  ") + "\n";
+    if (part2.length > 0) {
+      txt += part2.map(formatDay).join("  |  ") + "\n";
+    }
+    txt += "\n";
+  }
+
+  return txt.trim();
+}
+
 // ── Outbound message helpers ─────────────────────────────────
 
 async function sendWelcomeMenu(input: DispatchInboundInput) {
+  const db = supabaseAdmin();
+  const subRun = await getSubscriptionRun(db, input.contactId);
+  const isSubscribed = !!subRun;
+
   const text = `Maa annapurna rasoi में आपका हृदय से स्वागत है 🙏\n"घर जैसा शुद्ध और पौष्टिक भोजन, आपसे सिर्फ एक क्लिक की दूरी पर".`;
+  
+  const rows = [
+    { id: "menu_menu", title: "1️⃣ Menu", description: "Weekly tiffin menu board" },
+    { id: "menu_rate", title: "2️⃣ Package", description: "Tiffin plans & pricing" },
+  ];
+
+  if (isSubscribed) {
+    rows.push({ id: "menu_pause", title: "3️⃣ Pause Delivery", description: "Pause/resume your food deliveries" });
+  } else {
+    rows.push({ id: "menu_reg", title: "3️⃣ Registration", description: "Register & order your tiffin" });
+  }
+
+  rows.push(
+    { id: "menu_lang", title: "4️⃣ Language", description: "Select preferred language" },
+    { id: "menu_support", title: "5️⃣ Support", description: "Get support or contact agent" },
+    { id: "menu_vote", title: "6️⃣ Tiffin Voting", description: "Vote for what to cook" }
+  );
+
+  if (isSubscribed) {
+    rows.push({ id: "menu_calendar", title: "7️⃣ Delivery Calendar", description: "View your tiffin delivery calendar" });
+  }
+
   await engineSendInteractiveList({
     accountId: input.accountId,
     userId: input.userId,
@@ -269,14 +399,7 @@ async function sendWelcomeMenu(input: DispatchInboundInput) {
     sections: [
       {
         title: "मुख्य मेनू (Main Menu)",
-        rows: [
-          { id: "menu_menu", title: "1️⃣ Menu", description: "Weekly tiffin menu board" },
-          { id: "menu_rate", title: "2️⃣ Rate Card", description: "Tiffin plans & pricing" },
-          { id: "menu_reg", title: "3️⃣ Registration", description: "Register & order your tiffin" },
-          { id: "menu_lang", title: "4️⃣ Language", description: "Select preferred language" },
-          { id: "menu_support", title: "5️⃣ Support", description: "Get support or contact agent" },
-          { id: "menu_vote", title: "6️⃣ Tiffin Voting", description: "Vote for what to cook" },
-        ],
+        rows: rows,
       },
     ],
     resolvedContext: input.resolvedContext,
@@ -427,6 +550,10 @@ export async function dispatchAnnapurnaFlow(
 
   let activeRun: FlowRunRow | null = runs && runs.length > 0 ? runs[0] : null;
 
+  // Load subscription status
+  const subRun = await getSubscriptionRun(db, contactId);
+  const isSubscribed = !!subRun;
+
   // Log incoming reply event on active run if it exists
   if (activeRun) {
     await db.from("flow_run_events").insert({
@@ -534,11 +661,17 @@ export async function dispatchAnnapurnaFlow(
     if (message.kind === "text" && !selection) {
       const cleanText = text.toLowerCase();
       if (cleanText === "1" || cleanText.includes("menu") || cleanText.includes("मेन्यू")) selection = "menu_menu";
-      else if (cleanText === "2" || cleanText.includes("rate") || cleanText.includes("price") || cleanText.includes("प्राइस")) selection = "menu_rate";
-      else if (cleanText === "3" || cleanText.includes("reg") || cleanText.includes("register") || cleanText.includes("order")) selection = "menu_reg";
-      else if (cleanText === "4" || cleanText.includes("lang") || cleanText.includes("bhasha") || cleanText.includes("भाषा")) selection = "menu_lang";
+      else if (cleanText === "2" || cleanText.includes("rate") || cleanText.includes("price") || cleanText.includes("package") || cleanText.includes("पैकेज")) selection = "menu_rate";
+      else if (cleanText === "3") {
+        selection = isSubscribed ? "menu_pause" : "menu_reg";
+      } else if (cleanText.includes("reg") || cleanText.includes("register") || cleanText.includes("order")) {
+        selection = "menu_reg";
+      } else if (cleanText.includes("pause") || cleanText.includes("resume") || cleanText.includes("रोकें")) {
+        selection = "menu_pause";
+      } else if (cleanText === "4" || cleanText.includes("lang") || cleanText.includes("bhasha") || cleanText.includes("भाषा")) selection = "menu_lang";
       else if (cleanText === "5" || cleanText.includes("support") || cleanText.includes("help") || cleanText.includes("सहायता")) selection = "menu_support";
       else if (cleanText === "6" || cleanText.includes("vote") || cleanText.includes("voting") || cleanText.includes("चुनाव") || cleanText.includes("मतदान")) selection = "menu_vote";
+      else if (cleanText === "7" || cleanText.includes("calendar") || cleanText.includes("calender") || cleanText.includes("कैलेंडर")) selection = "menu_calendar";
     }
 
     if (selection === "menu_menu") {
@@ -566,6 +699,62 @@ export async function dispatchAnnapurnaFlow(
       });
       await sendBackToMenuButton(input, "मुख्य मेनू पर वापस जाने के लिए नीचे बटन दबाएं। 👇");
       await updateRunState("rate_view");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    if (selection === "menu_pause") {
+      if (!subRun) {
+        await sendWelcomeMenu(input);
+        return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+      }
+      const isPaused = !!subRun.vars.is_paused;
+      if (isPaused) {
+        await engineSendInteractiveButtons({
+          accountId,
+          userId: input.userId,
+          conversationId,
+          contactId,
+          bodyText: "🔴 आपकी टिफिन डिलीवरी अभी *PAUSED (रुकी हुई)* है।\n\nक्या आप इसे फिर से शुरू करना चाहते हैं?",
+          buttons: [
+            { id: "sub_action_resume", title: "▶️ Resume Delivery" },
+            { id: "go_back", title: "⬅️ Back to Menu" },
+          ],
+          resolvedContext: input.resolvedContext,
+        });
+      } else {
+        await engineSendInteractiveButtons({
+          accountId,
+          userId: input.userId,
+          conversationId,
+          contactId,
+          bodyText: "🟢 आपकी टिफिन डिलीवरी अभी *ACTIVE (चालू)* है।\n\nक्या आप इसे रोकना चाहते हैं?",
+          buttons: [
+            { id: "sub_action_pause", title: "⏸️ Pause Delivery" },
+            { id: "go_back", title: "⬅️ Back to Menu" },
+          ],
+          resolvedContext: input.resolvedContext,
+        });
+      }
+      await updateRunState("pause_view");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    if (selection === "menu_calendar") {
+      if (!subRun) {
+        await sendWelcomeMenu(input);
+        return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+      }
+      const calText = generateCalendarText(subRun);
+      await engineSendText({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        text: calText,
+        resolvedContext: input.resolvedContext,
+      });
+      await sendBackToMenuButton(input, "मुख्य मेनू पर वापस जाने के लिए नीचे बटन दबाएं। 👇");
+      await updateRunState("calendar_view");
       return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
     }
 
@@ -667,6 +856,144 @@ export async function dispatchAnnapurnaFlow(
 
     // Reprompt
     await sendWelcomeMenu(input);
+    return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+  }
+
+  // STATE: calendar_view
+  if (currentState === "calendar_view") {
+    if (selection === "go_back") {
+      await sendWelcomeMenu(input);
+      await updateRunState("main_menu");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+    // Reprompt back button
+    await sendBackToMenuButton(input, "मुख्य मेनू पर वापस जाने के लिए नीचे बटन दबाएं। 👇");
+    return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+  }
+
+  // STATE: pause_view
+  if (currentState === "pause_view") {
+    if (selection === "go_back") {
+      await sendWelcomeMenu(input);
+      await updateRunState("main_menu");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    if (!subRun) {
+      await sendWelcomeMenu(input);
+      await updateRunState("main_menu");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    if (selection === "sub_action_pause") {
+      const updatedVars = {
+        ...(subRun.vars || {}),
+        is_paused: true,
+        paused_at: new Date().toISOString(),
+      };
+
+      // Save in DB
+      await db
+        .from("flow_runs")
+        .update({ vars: updatedVars })
+        .eq("id", subRun.id);
+
+      await engineSendText({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        text: "⏸️ *आपकी टिफिन डिलीवरी सफलतापूर्वक रोक (Pause) दी गई है!*",
+        resolvedContext: input.resolvedContext,
+      });
+
+      await sendBackToMenuButton(input, "मुख्य मेनू पर वापस जाने के लिए नीचे बटन दबाएं। 👇");
+      await updateRunState("pause_confirmed");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    if (selection === "sub_action_resume") {
+      let pausedDates = [...(subRun.vars.paused_dates || [])];
+      if (subRun.vars.paused_at) {
+        const pausedAtDate = getLocalISODate(new Date(subRun.vars.paused_at));
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = getLocalISODate(yesterday);
+        
+        if (pausedAtDate <= yesterdayStr) {
+          const dates = getDatesBetween(subRun.vars.paused_at, yesterdayStr);
+          pausedDates = Array.from(new Set([...pausedDates, ...dates]));
+        }
+      }
+
+      const updatedVars = {
+        ...(subRun.vars || {}),
+        is_paused: false,
+        paused_at: null,
+        paused_dates: pausedDates,
+      };
+
+      // Save in DB
+      await db
+        .from("flow_runs")
+        .update({ vars: updatedVars })
+        .eq("id", subRun.id);
+
+      await engineSendText({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        text: "▶️ *आपकी टिफिन डिलीवरी सफलतापूर्वक पुनः चालू (Resume) कर दी गई है!* आपकी सेवा कल से फिर से शुरू हो जाएगी।",
+        resolvedContext: input.resolvedContext,
+      });
+
+      await sendBackToMenuButton(input, "मुख्य मेनू पर वापस जाने के लिए नीचे बटन दबाएं। 👇");
+      await updateRunState("pause_confirmed");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    // Reprompt
+    const isPaused = !!subRun.vars.is_paused;
+    if (isPaused) {
+      await engineSendInteractiveButtons({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        bodyText: "🔴 आपकी टिफिन डिलीवरी अभी *PAUSED (रुकी हुई)* है।\n\nक्या आप इसे फिर से शुरू करना चाहते हैं?",
+        buttons: [
+          { id: "sub_action_resume", title: "▶️ Resume Delivery" },
+          { id: "go_back", title: "⬅️ Back to Menu" },
+        ],
+        resolvedContext: input.resolvedContext,
+      });
+    } else {
+      await engineSendInteractiveButtons({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        bodyText: "🟢 आपकी टिफिन डिलीवरी अभी *ACTIVE (चालू)* है।\n\nक्या आप इसे रोकना चाहते हैं?",
+        buttons: [
+          { id: "sub_action_pause", title: "⏸️ Pause Delivery" },
+          { id: "go_back", title: "⬅️ Back to Menu" },
+        ],
+        resolvedContext: input.resolvedContext,
+      });
+    }
+    return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+  }
+
+  // STATE: pause_confirmed
+  if (currentState === "pause_confirmed") {
+    if (selection === "go_back") {
+      await sendWelcomeMenu(input);
+      await updateRunState("main_menu");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+    // Reprompt back button
+    await sendBackToMenuButton(input, "मुख्य मेनू पर वापस जाने के लिए नीचे बटन दबाएं। 👇");
     return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
   }
 

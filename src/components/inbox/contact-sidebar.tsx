@@ -48,6 +48,56 @@ interface ContactSidebarProps {
   contact: Contact | null;
 }
 
+function getLocalISODate(date: Date): string {
+  const offset = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(date.getTime() + offset);
+  return istDate.toISOString().split("T")[0];
+}
+
+function generateCrmCalendarDays(orderRun: any): { dateStr: string; label: string; status: 'delivered' | 'paused' | 'pending' }[] {
+  const vars = orderRun.vars || {};
+  const pausedDates = new Set<string>(vars.paused_dates || []);
+  const deliveredDates = new Set<string>(vars.delivered_dates || []);
+  const isPaused = !!vars.is_paused;
+  const pausedAtStr = vars.paused_at;
+  const dispatchedDateStr = vars.dispatched_at ? getLocalISODate(new Date(vars.dispatched_at)) : null;
+
+  const startStr = vars.dispatched_at || orderRun.ended_at || orderRun.started_at;
+  const startDate = new Date(startStr);
+  
+  const now = new Date();
+  const todayStr = getLocalISODate(now);
+  const pausedAtDateStr = pausedAtStr ? getLocalISODate(new Date(pausedAtStr)) : null;
+
+  const daysList: { dateStr: string; label: string; status: 'delivered' | 'paused' | 'pending' }[] = [];
+
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+    const dStr = getLocalISODate(d);
+    
+    const dayNum = d.getDate();
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthLabel = months[d.getMonth()];
+    const label = `${dayNum}-${monthLabel}`;
+
+    let status: 'delivered' | 'paused' | 'pending' = 'pending';
+
+    if (pausedDates.has(dStr)) {
+      status = 'paused';
+    } else if (isPaused && pausedAtDateStr && dStr >= pausedAtDateStr) {
+      status = 'paused';
+    } else if (deliveredDates.has(dStr) || (dispatchedDateStr && dStr === dispatchedDateStr)) {
+      status = 'delivered';
+    } else if (dStr < todayStr) {
+      status = 'delivered';
+    }
+
+    daysList.push({ dateStr: dStr, label, status });
+  }
+
+  return daysList;
+}
+
 export function ContactSidebar({ contact }: ContactSidebarProps) {
   const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -61,6 +111,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [paymentRef, setPaymentRef] = useState("");
   const [selectedRiderId, setSelectedRiderId] = useState("");
   const [dispatching, setDispatching] = useState(false);
+  const [togglingPause, setTogglingPause] = useState(false);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -291,6 +342,73 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     fetchContactData();
   }, [contact, orderRun, selectedRiderId, fetchContactData]);
 
+  const handleToggleSubscriptionPause = useCallback(async () => {
+    if (!contact || !orderRun) return;
+    setTogglingPause(true);
+    const supabase = createClient();
+
+    try {
+      const res = await fetch("/api/flows/runs/agent-action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          runId: orderRun.id,
+          action: "toggle_pause",
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error("Failed to toggle subscription pause:", errData.error || res.statusText);
+        alert("Failed to update pause status: " + (errData.error || res.statusText));
+        setTogglingPause(false);
+        return;
+      }
+
+      const resData = await res.json();
+      const newPauseState = resData.is_paused;
+
+      // Send WhatsApp notification to client
+      const { data: conv } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("contact_id", contact.id)
+        .maybeSingle();
+
+      if (conv) {
+        const orderNumber = orderRun.vars.reg_order_number || "N/A";
+        const messageText = newPauseState
+          ? `⏸️ *आपकी टिफिन डिलीवरी रोक (Pause) दी गई है!*\n\n📦 *ऑर्डर नंबर*: \`${orderNumber}\`\nहमारी टीम द्वारा आपके अनुरोध पर डिलीवरी रोक दी गई है। आवश्यकता पड़ने पर आप इसे पुनः चालू कर सकते हैं। 🙏`
+          : `▶️ *आपकी टिफिन डिलीवरी पुनः चालू (Resume) कर दी गई है!*\n\n📦 *ऑर्डर नंबर*: \`${orderNumber}\`\nआपकी डिलीवरी कल से फिर से शुरू हो जाएगी। स्वादिष्ट भोजन का आनंद लें! 🙏`;
+
+        try {
+          await fetch("/api/whatsapp/send", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              conversation_id: conv.id,
+              message_type: "text",
+              content_text: messageText,
+            }),
+          });
+        } catch (sendErr) {
+          console.error("Failed to send WhatsApp pause/resume notification:", sendErr);
+        }
+      }
+
+    } catch (err) {
+      console.error("Failed to fetch agent-action API for toggle pause:", err);
+      alert("Failed to update pause status due to a network error.");
+    }
+
+    setTogglingPause(false);
+    fetchContactData();
+  }, [contact, orderRun, fetchContactData]);
+
   if (!contact) {
     return (
       <div className="flex h-full w-70 items-center justify-center border-l border-slate-800 bg-slate-900">
@@ -301,6 +419,13 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
   const displayName = contact.name || contact.phone;
   const initials = displayName.charAt(0).toUpperCase();
+
+  const isDispatchedToday = (() => {
+    if (!orderRun || !orderRun.vars || !orderRun.vars.dispatched_at) return false;
+    const dispatchedDate = getLocalISODate(new Date(orderRun.vars.dispatched_at));
+    const todayStr = getLocalISODate(new Date());
+    return dispatchedDate === todayStr;
+  })();
 
   return (
     <div className="flex h-full w-70 flex-col border-l border-slate-800 bg-slate-900">
@@ -433,12 +558,95 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
             </>
           )}
 
+          {/* Tiffin Subscription Card */}
+          {orderRun && 
+            (orderRun.status === "completed" || orderRun.vars.payment_ref) && 
+            orderRun.vars && 
+            orderRun.vars.reg_order_number && (
+            <>
+              {/* Divider */}
+              <div className="my-4 border-t border-slate-800" />
+              
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wider">
+                    <User className="h-3.5 w-3.5 text-emerald-400" />
+                    Tiffin Subscription
+                  </h4>
+                  <span className={cn(
+                    "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider",
+                    orderRun.vars.is_paused 
+                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" 
+                      : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                  )}>
+                    {orderRun.vars.is_paused ? "Paused" : "Active"}
+                  </span>
+                </div>
+
+                <div className="mt-2 text-xs space-y-1 text-slate-300">
+                  <p>📦 Order No: <span className="font-semibold text-white">{orderRun.vars.reg_order_number}</span></p>
+                  <p>🍛 Plan: <span className="font-semibold text-white">{getPlanName(orderRun.vars.reg_plan)}</span></p>
+                  <p>👥 Plates: <span className="font-semibold text-white">{orderRun.vars.reg_qty}</span></p>
+                  {orderRun.vars.reg_location && (
+                    <p className="truncate">📍 Location: <span className="text-white">{orderRun.vars.reg_location}</span></p>
+                  )}
+                </div>
+
+                {/* Pause/Resume Toggle Button in CRM */}
+                <Button
+                  onClick={handleToggleSubscriptionPause}
+                  disabled={togglingPause}
+                  className={cn(
+                    "mt-3 w-full text-xs font-medium py-1.5 h-auto transition-all duration-200",
+                    orderRun.vars.is_paused
+                      ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                      : "bg-amber-600 hover:bg-amber-500 text-white"
+                  )}
+                >
+                  {togglingPause 
+                    ? "Updating..." 
+                    : orderRun.vars.is_paused 
+                      ? "▶️ Resume Subscription" 
+                      : "⏸️ Pause Subscription"
+                  }
+                </Button>
+
+                {/* Visual Calendar Grid */}
+                <div className="mt-4 border-t border-slate-800/60 pt-3">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-2 font-semibold">Delivery Calendar (30 Days)</label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {generateCrmCalendarDays(orderRun).map((day, idx) => (
+                      <div 
+                        key={idx}
+                        title={`${day.dateStr} - ${day.status}`}
+                        className={cn(
+                          "flex flex-col items-center justify-center rounded p-1 text-[9px] font-medium border transition-colors",
+                          day.status === "delivered" 
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            : day.status === "paused"
+                              ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                              : "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                        )}
+                      >
+                        <div className="text-[8px] opacity-90">{day.label.split("-")[0]} {day.label.split("-")[1]}</div>
+                        <div className="mt-0.5 text-[9px]">
+                          {day.status === "delivered" ? "✅" : day.status === "paused" ? "🟡" : "🔵"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Dispatch Tiffin Order */}
           {orderRun && 
             (orderRun.status === "completed" || orderRun.vars.payment_ref) && 
             orderRun.vars && 
             orderRun.vars.reg_order_number && 
-            !orderRun.vars.dispatched && (
+            !orderRun.vars.is_paused &&
+            !isDispatchedToday && (
             <>
               {/* Divider */}
               <div className="my-4 border-t border-slate-800" />
@@ -487,7 +695,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           {/* Dispatched Status Panel */}
           {orderRun && 
             orderRun.vars && 
-            orderRun.vars.dispatched && (
+            isDispatchedToday && (
             <>
               {/* Divider */}
               <div className="my-4 border-t border-slate-800" />
@@ -495,7 +703,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3">
                 <h4 className="text-xs font-semibold text-blue-400 flex items-center gap-1.5 uppercase tracking-wider">
                   <Check className="h-3.5 w-3.5 text-blue-400" />
-                  Order Dispatched
+                  Order Dispatched Today
                 </h4>
                 <div className="mt-2 text-xs space-y-1 text-slate-300">
                   <p>📦 Order No: <span className="font-semibold text-white">{orderRun.vars.reg_order_number}</span></p>
