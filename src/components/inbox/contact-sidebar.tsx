@@ -15,6 +15,7 @@ import {
   DollarSign,
   StickyNote,
   Plus,
+  Truck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,6 +38,12 @@ function getPlanName(planId: string): string {
   }
 }
 
+const RIDERS = [
+  { id: "rider_ramesh", name: "Ramesh Kumar (Rider 1)", trackingLink: "https://maps.google.com/?q=Ramesh" },
+  { id: "rider_suresh", name: "Suresh Singh (Rider 2)", trackingLink: "https://maps.google.com/?q=Suresh" },
+  { id: "rider_self", name: "Self Delivery (Store)", trackingLink: "https://maps.google.com/?q=Store" }
+];
+
 interface ContactSidebarProps {
   contact: Contact | null;
 }
@@ -51,13 +58,15 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [addingNote, setAddingNote] = useState(false);
   const [activeRun, setActiveRun] = useState<any>(null);
   const [paymentRef, setPaymentRef] = useState("");
+  const [selectedRiderId, setSelectedRiderId] = useState("");
+  const [dispatching, setDispatching] = useState(false);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
 
     const supabase = createClient();
 
-    // Fetch deals, notes, tags, and active flow run in parallel
+    // Fetch deals, notes, tags, and latest flow run in parallel
     const [dealsRes, notesRes, tagsRes, runRes] = await Promise.all([
       supabase
         .from("deals")
@@ -77,7 +86,8 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         .from("flow_runs")
         .select("*")
         .eq("contact_id", contact.id)
-        .eq("status", "active")
+        .order("started_at", { ascending: false })
+        .limit(1)
         .maybeSingle(),
     ]);
 
@@ -201,6 +211,68 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     setPaymentRef("");
     fetchContactData();
   }, [contact, activeRun, paymentRef, fetchContactData]);
+
+  const handleDispatchOrder = useCallback(async () => {
+    if (!contact || !activeRun || !selectedRiderId) return;
+    const rider = RIDERS.find((r) => r.id === selectedRiderId);
+    if (!rider) return;
+
+    setDispatching(true);
+    const supabase = createClient();
+    const orderNumber = activeRun.vars.reg_order_number || "N/A";
+
+    const updatedVars = {
+      ...activeRun.vars,
+      dispatched: true,
+      rider_name: rider.name,
+      tracking_link: rider.trackingLink,
+      dispatched_at: new Date().toISOString(),
+    };
+
+    // 1) Update flow run variables in DB
+    const { error: runErr } = await supabase
+      .from("flow_runs")
+      .update({
+        vars: updatedVars,
+      })
+      .eq("id", activeRun.id);
+
+    if (runErr) {
+      console.error("Failed to update flow run for dispatch:", runErr);
+      alert("Failed to dispatch order.");
+      setDispatching(false);
+      return;
+    }
+
+    // 2) Send WhatsApp dispatch message to customer
+    const { data: conv } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("contact_id", contact.id)
+      .maybeSingle();
+
+    if (conv) {
+      try {
+        await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            conversation_id: conv.id,
+            message_type: "text",
+            content_text: `🚚 *आपका टिफिन भेज दिया गया है!*\n\n📦 *ऑर्डर नंबर*: \`${orderNumber}\`\n👤 *राइडर*: *${rider.name}*\n\n📍 अपने डिलीवरी एजेंट को लाइव ट्रैक करने के लिए नीचे दिए गए लिंक पर क्लिक करें:\n👉 ${rider.trackingLink}\n\nस्वादिष्ट और शुद्ध भोजन का आनंद लें! 🙏`,
+          }),
+        });
+      } catch (sendErr) {
+        console.error("Failed to send WhatsApp dispatch notification:", sendErr);
+      }
+    }
+
+    setSelectedRiderId("");
+    setDispatching(false);
+    fetchContactData();
+  }, [contact, activeRun, selectedRiderId, fetchContactData]);
 
   if (!contact) {
     return (
@@ -340,6 +412,93 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                 >
                   Confirm Payment
                 </Button>
+              </div>
+            </>
+          )}
+
+          {/* Dispatch Tiffin Order */}
+          {activeRun && 
+            activeRun.status === "completed" && 
+            activeRun.vars && 
+            activeRun.vars.reg_order_number && 
+            !activeRun.vars.dispatched && (
+            <>
+              {/* Divider */}
+              <div className="my-4 border-t border-slate-800" />
+              
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                <h4 className="text-xs font-semibold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
+                  <Truck className="h-3.5 w-3.5 text-amber-400" />
+                  Dispatch Tiffin Order
+                </h4>
+                <div className="mt-2 text-xs space-y-1 text-slate-300">
+                  <p>📦 Order No: <span className="font-semibold text-white">{activeRun.vars.reg_order_number}</span></p>
+                  <p>🍛 Plan: <span className="font-semibold text-white">{getPlanName(activeRun.vars.reg_plan)}</span></p>
+                  <p>👥 Plates: <span className="font-semibold text-white">{activeRun.vars.reg_qty}</span></p>
+                  {activeRun.vars.reg_location && (
+                    <p className="truncate">📍 Location: <span className="text-white">{activeRun.vars.reg_location}</span></p>
+                  )}
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block">Select Rider</label>
+                  <select
+                    value={selectedRiderId}
+                    onChange={(e) => setSelectedRiderId(e.target.value)}
+                    className="w-full rounded border border-slate-700 bg-slate-800/80 px-2 py-1 text-xs text-white focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value="" className="bg-slate-900">-- Select Rider --</option>
+                    {RIDERS.map((rider) => (
+                      <option key={rider.id} value={rider.id} className="bg-slate-900">
+                        {rider.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <Button
+                  onClick={handleDispatchOrder}
+                  disabled={!selectedRiderId || dispatching}
+                  className="mt-3 w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium py-1.5 h-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {dispatching ? "Dispatching..." : "Confirm Dispatch"}
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* Dispatched Status Panel */}
+          {activeRun && 
+            activeRun.vars && 
+            activeRun.vars.dispatched && (
+            <>
+              {/* Divider */}
+              <div className="my-4 border-t border-slate-800" />
+              
+              <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3">
+                <h4 className="text-xs font-semibold text-blue-400 flex items-center gap-1.5 uppercase tracking-wider">
+                  <Check className="h-3.5 w-3.5 text-blue-400" />
+                  Order Dispatched
+                </h4>
+                <div className="mt-2 text-xs space-y-1 text-slate-300">
+                  <p>📦 Order No: <span className="font-semibold text-white">{activeRun.vars.reg_order_number}</span></p>
+                  <p>👤 Rider: <span className="font-semibold text-white">{activeRun.vars.rider_name}</span></p>
+                  {activeRun.vars.dispatched_at && (
+                    <p>🕒 Dispatched At: <span className="text-white">{format(new Date(activeRun.vars.dispatched_at), "MMM d, yyyy HH:mm")}</span></p>
+                  )}
+                  {activeRun.vars.tracking_link && (
+                    <div className="mt-2">
+                      <a
+                        href={activeRun.vars.tracking_link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-blue-400 underline hover:text-blue-300 flex items-center gap-1"
+                      >
+                        📍 Track Live Location
+                      </a>
+                    </div>
+                  )}
+                </div>
               </div>
             </>
           )}

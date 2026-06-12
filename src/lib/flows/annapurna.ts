@@ -230,6 +230,116 @@ export async function dispatchAnnapurnaFlow(
   const contactId = input.contactId;
   const conversationId = input.conversationId;
 
+  // 0) Handle Rider Dispatch Commands (e.g. #track AMAR-XXXX [Rider Name] <link> or #track AMAR-XXXX <link>)
+  if (input.message.kind === "text") {
+    const text = input.message.text.trim();
+    if (text.startsWith("#track") || text.startsWith("#dispatch")) {
+      const parts = text.split(/\s+/);
+      const command = parts[0];
+      const orderNumber = parts.find((p) => p.startsWith("AMAR-"));
+      const trackingLink = parts.find(
+        (p) => p.startsWith("http://") || p.startsWith("https://")
+      );
+
+      if (!orderNumber || !trackingLink) {
+        await engineSendText({
+          accountId,
+          userId: input.userId,
+          conversationId,
+          contactId,
+          text: `⚠️ *गलत प्रारूप (Invalid Format)*\n\nकृपया इस प्रारूप में भेजें:\n👉 \`#track AMAR-XXXX [राइडर का नाम] <गूगल मैप्स लिंक>\`\n\nउदाहरण:\n\`#track AMAR-4892 Ramesh https://maps.app.goo.gl/xyz\``,
+          resolvedContext: input.resolvedContext,
+        });
+        return { consumed: true, outcome: "advanced" };
+      }
+
+      // Extract Rider Name if present
+      const nameParts = parts.slice(1).filter((p) => p !== orderNumber && p !== trackingLink);
+      let riderName = nameParts.join(" ").trim();
+      if (!riderName) {
+        // Look up sender's contact name
+        const { data: senderContact } = await db
+          .from("contacts")
+          .select("name, phone")
+          .eq("id", contactId)
+          .maybeSingle();
+        riderName = senderContact?.name || senderContact?.phone || "Rider";
+      }
+
+      // Find customer flow run by order number in variables
+      const { data: recentRuns } = await db
+        .from("flow_runs")
+        .select("*")
+        .eq("account_id", accountId)
+        .order("started_at", { ascending: false })
+        .limit(100);
+
+      const customerRun = recentRuns?.find(
+        (r) => r.vars && r.vars.reg_order_number === orderNumber
+      );
+
+      if (!customerRun) {
+        await engineSendText({
+          accountId,
+          userId: input.userId,
+          conversationId,
+          contactId,
+          text: `❌ *ऑर्डर ${orderNumber} नहीं मिला!*\n\nकृपया जांचें कि ऑर्डर नंबर सही है या नहीं।`,
+          resolvedContext: input.resolvedContext,
+        });
+        return { consumed: true, outcome: "no_match" };
+      }
+
+      // Update customer run variables
+      const updatedVars = {
+        ...customerRun.vars,
+        dispatched: true,
+        rider_name: riderName,
+        tracking_link: trackingLink,
+        dispatched_at: new Date().toISOString(),
+      };
+
+      const updatePayload: Record<string, any> = {
+        vars: updatedVars,
+      };
+
+      if (customerRun.status !== "completed") {
+        updatePayload.status = "completed";
+        updatePayload.ended_at = new Date().toISOString();
+        updatePayload.end_reason = "dispatched_by_rider_command";
+      }
+
+      await db
+        .from("flow_runs")
+        .update(updatePayload)
+        .eq("id", customerRun.id);
+
+      // Send dispatch WhatsApp message to customer
+      await engineSendText({
+        accountId,
+        userId: input.userId,
+        conversationId: customerRun.conversation_id,
+        contactId: customerRun.contact_id,
+        text: `🚚 *आपका टिफिन भेज दिया गया है!*\n\n📦 *ऑर्डर नंबर*: \`${orderNumber}\`\n👤 *राइडर*: *${riderName}*\n\n📍 अपने डिलीवरी एजेंट को लाइव ट्रैक करने के लिए नीचे दिए गए लिंक पर क्लिक करें:\n👉 ${trackingLink}\n\nस्वादिष्ट और शुद्ध भोजन का आनंद लें! 🙏`,
+        resolvedContext: input.resolvedContext,
+      });
+
+      // Confirm dispatch to rider
+      await engineSendText({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        text: `✅ *ऑर्डर ${orderNumber} भेज दिया गया है!*\n\nग्राहक (*${
+          customerRun.vars.reg_name || "Customer"
+        }*) को लाइव लोकेशन लिंक भेज दिया गया है।`,
+        resolvedContext: input.resolvedContext,
+      });
+
+      return { consumed: true, flow_run_id: customerRun.id, outcome: "completed" };
+    }
+  }
+
   // 1) Load or create active run
   const { data: runs, error: runError } = await db
     .from("flow_runs")
