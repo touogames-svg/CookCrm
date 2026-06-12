@@ -255,6 +255,35 @@ const VOTING_OPTIONS: Record<
   },
 };
 
+const VEG_VOTE_COMBOS = [
+  { id: "opt_pair_1", title: "1. Paneer + Gobhi", description: "पनीर दो प्याजा + सूखी गोभी गाजर" },
+  { id: "opt_pair_2", title: "2. Paneer + Aloo", description: "कढ़ाई पनीर + आलू शिमला मिर्च" },
+  { id: "opt_pair_3", title: "3. Dal Fry + Baingan", description: "दाल फ्राई + भुना मसाला बैंगन" },
+  { id: "opt_pair_4", title: "4. Dal + Bhindi", description: "दाल तड़का + भिंडी दो प्याजा" },
+  { id: "opt_pair_5", title: "5. Dal + Aloo Jeera", description: "दाल मखनी + आलू जीरा" }
+];
+
+function getTomorrowInfo(): { dateStr: string; label: string } {
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const tomorrowDateStr = getLocalISODate(tomorrow);
+
+  const dayLabels: Record<string, string> = {
+    monday: "सोमवार (Monday)",
+    tuesday: "मंगलवार (Tuesday)",
+    wednesday: "बुधवार (Wednesday)",
+    thursday: "गुरुवार (Thursday)",
+    friday: "शुक्रवार (Friday)",
+    saturday: "शनिवार (Saturday)",
+    sunday: "रविवार (Sunday)",
+  };
+  const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const tomorrowDayName = days[tomorrow.getDay()];
+  const tomorrowLabel = dayLabels[tomorrowDayName];
+
+  return { dateStr: tomorrowDateStr, label: tomorrowLabel };
+}
+
 // ── Calendar & Subscription helpers ──────────────────────────
 
 async function getSubscriptionRun(db: any, contactId: string) {
@@ -362,32 +391,18 @@ function generateCalendarText(orderRun: any): string {
 // ── Outbound message helpers ─────────────────────────────────
 
 async function sendWelcomeMenu(input: DispatchInboundInput) {
-  const db = supabaseAdmin();
-  const subRun = await getSubscriptionRun(db, input.contactId);
-  const isSubscribed = !!subRun;
-
   const text = `Maa annapurna rasoi में आपका हृदय से स्वागत है 🙏\n"घर जैसा शुद्ध और पौष्टिक भोजन, आपसे सिर्फ एक क्लिक की दूरी पर".`;
   
   const rows = [
     { id: "menu_menu", title: "1️⃣ Menu", description: "Weekly tiffin menu board" },
     { id: "menu_rate", title: "2️⃣ Package", description: "Tiffin plans & pricing" },
+    { id: "menu_reg", title: "3️⃣ Registration", description: "Register & order your tiffin" },
+    { id: "menu_pause", title: "4️⃣ Pause Delivery", description: "Pause/resume your food deliveries" },
+    { id: "menu_calendar", title: "5️⃣ Delivery Calendar", description: "View your tiffin delivery calendar" },
+    { id: "menu_lang", title: "6️⃣ Language", description: "Select preferred language" },
+    { id: "menu_support", title: "7️⃣ Support", description: "Get support or contact agent" },
+    { id: "menu_vote", title: "8️⃣ Vegetable Voting", description: "Vote for tomorrow's vegetables" }
   ];
-
-  if (isSubscribed) {
-    rows.push({ id: "menu_pause", title: "3️⃣ Pause Delivery", description: "Pause/resume your food deliveries" });
-  } else {
-    rows.push({ id: "menu_reg", title: "3️⃣ Registration", description: "Register & order your tiffin" });
-  }
-
-  rows.push(
-    { id: "menu_lang", title: "4️⃣ Language", description: "Select preferred language" },
-    { id: "menu_support", title: "5️⃣ Support", description: "Get support or contact agent" },
-    { id: "menu_vote", title: "6️⃣ Tiffin Voting", description: "Vote for what to cook" }
-  );
-
-  if (isSubscribed) {
-    rows.push({ id: "menu_calendar", title: "7️⃣ Delivery Calendar", description: "View your tiffin delivery calendar" });
-  }
 
   await engineSendInteractiveList({
     accountId: input.accountId,
@@ -662,16 +677,12 @@ export async function dispatchAnnapurnaFlow(
       const cleanText = text.toLowerCase();
       if (cleanText === "1" || cleanText.includes("menu") || cleanText.includes("मेन्यू")) selection = "menu_menu";
       else if (cleanText === "2" || cleanText.includes("rate") || cleanText.includes("price") || cleanText.includes("package") || cleanText.includes("पैकेज")) selection = "menu_rate";
-      else if (cleanText === "3") {
-        selection = isSubscribed ? "menu_pause" : "menu_reg";
-      } else if (cleanText.includes("reg") || cleanText.includes("register") || cleanText.includes("order")) {
-        selection = "menu_reg";
-      } else if (cleanText.includes("pause") || cleanText.includes("resume") || cleanText.includes("रोकें")) {
-        selection = "menu_pause";
-      } else if (cleanText === "4" || cleanText.includes("lang") || cleanText.includes("bhasha") || cleanText.includes("भाषा")) selection = "menu_lang";
-      else if (cleanText === "5" || cleanText.includes("support") || cleanText.includes("help") || cleanText.includes("सहायता")) selection = "menu_support";
-      else if (cleanText === "6" || cleanText.includes("vote") || cleanText.includes("voting") || cleanText.includes("चुनाव") || cleanText.includes("मतदान")) selection = "menu_vote";
-      else if (cleanText === "7" || cleanText.includes("calendar") || cleanText.includes("calender") || cleanText.includes("कैलेंडर")) selection = "menu_calendar";
+      else if (cleanText === "3" || cleanText.includes("reg") || cleanText.includes("register") || cleanText.includes("order")) selection = "menu_reg";
+      else if (cleanText === "4" || cleanText.includes("pause") || cleanText.includes("resume") || cleanText.includes("रोकें")) selection = "menu_pause";
+      else if (cleanText === "5" || cleanText.includes("calendar") || cleanText.includes("calender") || cleanText.includes("कैलेंडर")) selection = "menu_calendar";
+      else if (cleanText === "6" || cleanText.includes("lang") || cleanText.includes("bhasha") || cleanText.includes("भाषा")) selection = "menu_lang";
+      else if (cleanText === "7" || cleanText.includes("support") || cleanText.includes("help") || cleanText.includes("सहायता")) selection = "menu_support";
+      else if (cleanText === "8" || cleanText.includes("vote") || cleanText.includes("voting") || cleanText.includes("चुनाव") || cleanText.includes("मतदान")) selection = "menu_vote";
     }
 
     if (selection === "menu_menu") {
@@ -704,8 +715,17 @@ export async function dispatchAnnapurnaFlow(
 
     if (selection === "menu_pause") {
       if (!subRun) {
-        await sendWelcomeMenu(input);
-        return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+        await engineSendText({
+          accountId,
+          userId: input.userId,
+          conversationId,
+          contactId,
+          text: "⚠️ *आप पंजीकृत नहीं हैं (You are not registered)*\n\nटिफिन रोकने/चालू करने के लिए कृपया पहले नया रजिस्ट्रेशन (ऑप्शन 3) करें। 🙏",
+          resolvedContext: input.resolvedContext,
+        });
+        await sendBackToMenuButton(input, "मुख्य मेनू पर वापस जाने के लिए नीचे बटन दबाएं। 👇");
+        await updateRunState("calendar_view");
+        return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
       }
       const isPaused = !!subRun.vars.is_paused;
       if (isPaused) {
@@ -741,8 +761,17 @@ export async function dispatchAnnapurnaFlow(
 
     if (selection === "menu_calendar") {
       if (!subRun) {
-        await sendWelcomeMenu(input);
-        return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+        await engineSendText({
+          accountId,
+          userId: input.userId,
+          conversationId,
+          contactId,
+          text: "⚠️ *आप पंजीकृत नहीं हैं (You are not registered)*\n\nडिलीवरी कैलेंडर देखने के लिए कृपया पहले नया रजिस्ट्रेशन (ऑप्शन 3) करें। 🙏",
+          resolvedContext: input.resolvedContext,
+        });
+        await sendBackToMenuButton(input, "मुख्य मेनू पर वापस जाने के लिए नीचे बटन दबाएं। 👇");
+        await updateRunState("calendar_view");
+        return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
       }
       const calText = generateCalendarText(subRun);
       await engineSendText({
@@ -826,31 +855,24 @@ export async function dispatchAnnapurnaFlow(
     }
 
     if (selection === "menu_vote") {
+      const tomorrowInfo = getTomorrowInfo();
       await engineSendInteractiveList({
         accountId,
         userId: input.userId,
         conversationId,
         contactId,
-        bodyText: "🗳️ *टिफिन वोटिंग (Tiffin Voting)*\n\nकृपया उस दिन को चुनें जिसके लिए आप मतदान करना चाहते हैं:",
-        buttonLabel: "दिन चुनें",
+        bodyText: `🗳️ *Vegetable Voting — कल के भोजन का चयन*\n\nकल *${tomorrowInfo.label}* के भोजन के लिए अपना पसंदीदा कॉम्बिनेशन चुनें:`,
+        buttonLabel: "कॉम्बिनेशन चुनें",
         sections: [
           {
-            title: "सप्ताह के दिन (Days)",
-            rows: [
-              { id: "day_monday", title: "सोमवार (Monday)" },
-              { id: "day_tuesday", title: "मंगलवार (Tuesday)" },
-              { id: "day_wednesday", title: "बुधवार (Wednesday)" },
-              { id: "day_thursday", title: "गुरुवार (Thursday)" },
-              { id: "day_friday", title: "शुक्रवार (Friday)" },
-              { id: "day_saturday", title: "शनिवार (Saturday)" },
-              { id: "day_sunday", title: "रविवार (Sunday)" },
-            ],
+            title: "सब्जी / दाल विकल्प",
+            rows: VEG_VOTE_COMBOS,
           },
         ],
         resolvedContext: input.resolvedContext,
       });
 
-      await updateRunState("menu_vote_day_list");
+      await updateRunState("menu_vote_tomorrow_selected");
       return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
     }
 
@@ -1553,136 +1575,34 @@ export async function dispatchAnnapurnaFlow(
     return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
   }
 
-  // STATE: menu_vote_day_list
-  if (currentState === "menu_vote_day_list") {
+  // STATE: menu_vote_tomorrow_selected
+  if (currentState === "menu_vote_tomorrow_selected") {
     if (selection === "go_back") {
       await sendWelcomeMenu(input);
       await updateRunState("main_menu");
       return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
     }
 
-    let selectedDay: string | null = null;
-    if (selection && selection.startsWith("day_")) {
-      selectedDay = selection.replace("day_", "");
-    } else if (message.kind === "text") {
-      const cleanText = text.toLowerCase();
-      if (cleanText.includes("mon") || cleanText.includes("सोम")) selectedDay = "monday";
-      else if (cleanText.includes("tue") || cleanText.includes("मंग")) selectedDay = "tuesday";
-      else if (cleanText.includes("wed") || cleanText.includes("बुध")) selectedDay = "wednesday";
-      else if (cleanText.includes("thu") || cleanText.includes("गुरु")) selectedDay = "thursday";
-      else if (cleanText.includes("fri") || cleanText.includes("शुक्र")) selectedDay = "friday";
-      else if (cleanText.includes("sat") || cleanText.includes("शनि")) selectedDay = "saturday";
-      else if (cleanText.includes("sun") || cleanText.includes("रवि")) selectedDay = "sunday";
-    }
-
-    if (selectedDay && VOTING_OPTIONS[selectedDay]) {
-      const dayConfig = VOTING_OPTIONS[selectedDay];
-      
-      // Send interactive buttons for the selected day options
-      await engineSendInteractiveButtons({
-        accountId,
-        userId: input.userId,
-        conversationId,
-        contactId,
-        bodyText: `🗳️ *${dayConfig.title}*\n\n${dayConfig.description}\n\nकृपया अपनी पसंद की सब्जी जोड़ी चुनें:`,
-        buttons: dayConfig.options.map((opt) => ({
-          id: `vote_opt_${opt.id}`,
-          title: opt.btnLabel,
-        })),
-        resolvedContext: input.resolvedContext,
-      });
-
-      await updateRunState("menu_vote_day_selected", {
-        vote_selected_day: selectedDay,
-      });
-      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
-    }
-
-    // Reprompt day list
-    await engineSendInteractiveList({
-      accountId,
-      userId: input.userId,
-      conversationId,
-      contactId,
-      bodyText: "🗳️ *टिफिन वोटिंग (Tiffin Voting)*\n\nकृपया उस दिन को चुनें जिसके लिए आप मतदान करना चाहते हैं:",
-      buttonLabel: "दिन चुनें",
-      sections: [
-        {
-          title: "सप्ताह के दिन (Days)",
-          rows: [
-            { id: "day_monday", title: "सोमवार (Monday)" },
-            { id: "day_tuesday", title: "मंगलवार (Tuesday)" },
-            { id: "day_wednesday", title: "बुधवार (Wednesday)" },
-            { id: "day_thursday", title: "गुरुवार (Thursday)" },
-            { id: "day_friday", title: "शुक्रवार (Friday)" },
-            { id: "day_saturday", title: "शनिवार (Saturday)" },
-            { id: "day_sunday", title: "रविवार (Sunday)" },
-          ],
-        },
-      ],
-      resolvedContext: input.resolvedContext,
-    });
-    return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
-  }
-
-  // STATE: menu_vote_day_selected
-  if (currentState === "menu_vote_day_selected") {
-    if (selection === "go_back") {
-      // Send interactive list of days
-      await engineSendInteractiveList({
-        accountId,
-        userId: input.userId,
-        conversationId,
-        contactId,
-        bodyText: "🗳️ *टिफिन वोटिंग (Tiffin Voting)*\n\nकृपया उस दिन को चुनें जिसके लिए आप मतदान करना चाहते हैं:",
-        buttonLabel: "दिन चुनें",
-        sections: [
-          {
-            title: "सप्ताह के दिन (Days)",
-            rows: [
-              { id: "day_monday", title: "सोमवार (Monday)" },
-              { id: "day_tuesday", title: "मंगलवार (Tuesday)" },
-              { id: "day_wednesday", title: "बुधवार (Wednesday)" },
-              { id: "day_thursday", title: "गुरुवार (Thursday)" },
-              { id: "day_friday", title: "शुक्रवार (Friday)" },
-              { id: "day_saturday", title: "शनिवार (Saturday)" },
-              { id: "day_sunday", title: "रविवार (Sunday)" },
-            ],
-          },
-        ],
-        resolvedContext: input.resolvedContext,
-      });
-
-      await updateRunState("menu_vote_day_list");
-      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
-    }
-
-    const selectedDay = activeRun.vars.vote_selected_day as string;
-    const dayConfig = VOTING_OPTIONS[selectedDay];
-
+    const tomorrowInfo = getTomorrowInfo();
     let voteOptionId: string | null = null;
-    if (selection && selection.startsWith("vote_opt_")) {
-      voteOptionId = selection.replace("vote_opt_", "");
+    if (selection && selection.startsWith("opt_pair_")) {
+      voteOptionId = selection;
     } else if (message.kind === "text") {
       const cleanText = text.toLowerCase();
-      // Map 1/2 or keywords
-      if (cleanText === "1" || cleanText.includes("a") || cleanText.includes("first")) {
-        voteOptionId = dayConfig.options[0].id;
-      } else if (cleanText === "2" || cleanText.includes("b") || cleanText.includes("second")) {
-        voteOptionId = dayConfig.options[1].id;
-      }
+      if (cleanText === "1") voteOptionId = "opt_pair_1";
+      else if (cleanText === "2") voteOptionId = "opt_pair_2";
+      else if (cleanText === "3") voteOptionId = "opt_pair_3";
+      else if (cleanText === "4") voteOptionId = "opt_pair_4";
+      else if (cleanText === "5") voteOptionId = "opt_pair_5";
     }
 
-    if (voteOptionId && dayConfig.options.some((o) => o.id === voteOptionId)) {
-      // Check if user already voted for this day
+    if (voteOptionId && VEG_VOTE_COMBOS.some((c) => c.id === voteOptionId)) {
       const oldVotes: Record<string, string> = (activeRun.vars.votes as Record<string, string>) || {};
-      const alreadyVoted = !!oldVotes[selectedDay];
+      const alreadyVoted = !!oldVotes[tomorrowInfo.dateStr];
 
-      // Save vote inside variables map
       const votes: Record<string, string> = { ...oldVotes };
-      votes[selectedDay] = voteOptionId;
+      votes[tomorrowInfo.dateStr] = voteOptionId;
 
-      // Update flow run variables in DB
       await db
         .from("flow_runs")
         .update({
@@ -1693,7 +1613,6 @@ export async function dispatchAnnapurnaFlow(
         })
         .eq("id", activeRun.id);
 
-      // Fetch all runs to calculate voting results percentages
       const { data: voteRuns } = await db
         .from("flow_runs")
         .select("contact_id, vars")
@@ -1701,7 +1620,6 @@ export async function dispatchAnnapurnaFlow(
         .order("started_at", { ascending: false })
         .limit(500);
 
-      // Deduplicate on contact_id to count only the latest run per contact
       const uniqueVotes: Record<string, Record<string, string>> = {};
       for (const run of voteRuns || []) {
         if (run.vars && run.vars.votes && run.contact_id) {
@@ -1711,37 +1629,34 @@ export async function dispatchAnnapurnaFlow(
         }
       }
 
-      // Count votes for selected day
       let totalVotes = 0;
       const counts: Record<string, number> = {};
-      for (const opt of dayConfig.options) {
+      for (const opt of VEG_VOTE_COMBOS) {
         counts[opt.id] = 0;
       }
 
       for (const cid in uniqueVotes) {
         const uVotes = uniqueVotes[cid];
-        const voteVal = uVotes[selectedDay];
+        const voteVal = uVotes[tomorrowInfo.dateStr];
         if (voteVal && counts[voteVal] !== undefined) {
           counts[voteVal]++;
           totalVotes++;
         }
       }
 
-      // Format results message
-      let resultText = `🗳️ *${dayConfig.label} के लिए मतदान के परिणाम:*\n\n`;
-      for (const opt of dayConfig.options) {
+      let resultText = `🗳️ *कल के लिए Vegetable Voting के परिणाम:*\n\n`;
+      for (const opt of VEG_VOTE_COMBOS) {
         const count = counts[opt.id] || 0;
         const percentage = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-        resultText += `🔸 *${opt.label}*: *${percentage}%* (${count} vote${count !== 1 ? "s" : ""})\n`;
+        resultText += `🔸 *${opt.description}*: *${percentage}%* (${count} vote${count !== 1 ? "s" : ""})\n`;
       }
       resultText += `\n📊 *कुल वोट (Total Votes):* ${totalVotes}\n\n`;
       if (alreadyVoted) {
-        resultText += `ℹ️ *आपने इस दिन के लिए पहले भी वोट किया था। आपका नया वोट अपडेट कर दिया गया है!*`;
+        resultText += `ℹ️ *आपने कल के लिए पहले भी वोट किया था। आपका नया वोट अपडेट कर दिया गया है!*`;
       } else {
         resultText += `आपका वोट दर्ज कर लिया गया है। धन्यवाद! 🙏`;
       }
 
-      // Send results with navigation buttons
       await engineSendInteractiveButtons({
         accountId,
         userId: input.userId,
@@ -1749,7 +1664,7 @@ export async function dispatchAnnapurnaFlow(
         contactId,
         bodyText: resultText,
         buttons: [
-          { id: "vote_go_days", title: "⬅️ Back to Days" },
+          { id: "vote_go_back_to_vote", title: "⬅️ Back to Voting" },
           { id: "go_back", title: "🏠 Main Menu" },
         ],
         resolvedContext: input.resolvedContext,
@@ -1760,16 +1675,19 @@ export async function dispatchAnnapurnaFlow(
     }
 
     // Reprompt selection
-    await engineSendInteractiveButtons({
+    await engineSendInteractiveList({
       accountId,
       userId: input.userId,
       conversationId,
       contactId,
-      bodyText: `⚠️ *अमान्य चयन (Invalid Selection)*\n\n🗳️ *${dayConfig.title}*\n\n${dayConfig.description}\n\nकृपया अपनी पसंद की सब्जी जोड़ी चुनें:`,
-      buttons: dayConfig.options.map((opt) => ({
-        id: `vote_opt_${opt.id}`,
-        title: opt.btnLabel,
-      })),
+      bodyText: `⚠️ *अमान्य चयन (Invalid Selection)*\n\n🗳️ *Vegetable Voting — कल के भोजन का चयन*\n\nकल *${tomorrowInfo.label}* के भोजन के लिए अपना पसंदीदा कॉम्बिनेशन चुनें:`,
+      buttonLabel: "कॉम्बिनेशन चुनें",
+      sections: [
+        {
+          title: "सब्जी / दाल विकल्प",
+          rows: VEG_VOTE_COMBOS,
+        },
+      ],
       resolvedContext: input.resolvedContext,
     });
     return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
@@ -1777,33 +1695,25 @@ export async function dispatchAnnapurnaFlow(
 
   // STATE: menu_vote_result
   if (currentState === "menu_vote_result") {
-    if (selection === "vote_go_days" || text.toLowerCase().includes("day") || text === "1") {
-      // Send interactive list of days
+    if (selection === "vote_go_back_to_vote" || text.toLowerCase().includes("vote") || text === "1") {
+      const tomorrowInfo = getTomorrowInfo();
       await engineSendInteractiveList({
         accountId,
         userId: input.userId,
         conversationId,
         contactId,
-        bodyText: "🗳️ *टिफिन वोटिंग (Tiffin Voting)*\n\nकृपया उस दिन को चुनें जिसके लिए आप मतदान करना चाहते हैं:",
-        buttonLabel: "दिन चुनें",
+        bodyText: `🗳️ *Vegetable Voting — कल के भोजन का चयन*\n\nकल *${tomorrowInfo.label}* के भोजन के लिए अपना पसंदीदा कॉम्बिनेशन चुनें:`,
+        buttonLabel: "कॉम्बिनेशन चुनें",
         sections: [
           {
-            title: "सप्ताह के दिन (Days)",
-            rows: [
-              { id: "day_monday", title: "सोमवार (Monday)" },
-              { id: "day_tuesday", title: "मंगलवार (Tuesday)" },
-              { id: "day_wednesday", title: "बुधवार (Wednesday)" },
-              { id: "day_thursday", title: "गुरुवार (Thursday)" },
-              { id: "day_friday", title: "शुक्रवार (Friday)" },
-              { id: "day_saturday", title: "शनिवार (Saturday)" },
-              { id: "day_sunday", title: "रविवार (Sunday)" },
-            ],
+            title: "सब्जी / दाल विकल्प",
+            rows: VEG_VOTE_COMBOS,
           },
         ],
         resolvedContext: input.resolvedContext,
       });
 
-      await updateRunState("menu_vote_day_list");
+      await updateRunState("menu_vote_tomorrow_selected");
       return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
     }
 
@@ -1821,7 +1731,7 @@ export async function dispatchAnnapurnaFlow(
       contactId,
       bodyText: "वोटिंग मेनू में वापस जाने या मुख्य मेनू पर लौटने के लिए नीचे दिए गए बटन चुनें: 👇",
       buttons: [
-        { id: "vote_go_days", title: "⬅️ Back to Days" },
+        { id: "vote_go_back_to_vote", title: "⬅️ Back to Voting" },
         { id: "go_back", title: "🏠 Main Menu" },
       ],
       resolvedContext: input.resolvedContext,
