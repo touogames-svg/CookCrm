@@ -181,6 +181,80 @@ async function getOrCreateAnnapurnaFlow(db: any, accountId: string, userId: stri
   return newFlow.id;
 }
 
+const VOTING_OPTIONS: Record<
+  string,
+  {
+    title: string;
+    label: string;
+    description: string;
+    options: { id: string; label: string; btnLabel: string }[];
+  }
+> = {
+  monday: {
+    title: "सोमवार (Monday) के लिए सब्जी चुनें:",
+    label: "सोमवार (Monday)",
+    description: "1️⃣ Dal Tadka + Aloo Gobhi\n2️⃣ Chole Masala + Paneer",
+    options: [
+      { id: "mon_opt_a", label: "Dal Tadka + Aloo Gobhi", btnLabel: "1️⃣ Dal Tadka + Aloo" },
+      { id: "mon_opt_b", label: "Chole Masala + Paneer", btnLabel: "2️⃣ Chole + Paneer" },
+    ],
+  },
+  tuesday: {
+    title: "मंगलवार (Tuesday) के लिए सब्जी चुनें:",
+    label: "मंगलवार (Tuesday)",
+    description: "1️⃣ Chole Masala + Aloo Matar\n2️⃣ Rajma Masala + Seasonal Veg",
+    options: [
+      { id: "tue_opt_a", label: "Chole Masala + Aloo Matar", btnLabel: "1️⃣ Chole + Aloo Matar" },
+      { id: "tue_opt_b", label: "Rajma Masala + Seasonal Veg", btnLabel: "2️⃣ Rajma + Mix Veg" },
+    ],
+  },
+  wednesday: {
+    title: "बुधवार (Wednesday) के लिए सब्जी चुनें:",
+    label: "बुधवार (Wednesday)",
+    description: "1️⃣ Moong Dal Fry + Mix Veg\n2️⃣ Dal Makhani + Aloo Gobhi",
+    options: [
+      { id: "wed_opt_a", label: "Moong Dal Fry + Mix Veg", btnLabel: "1️⃣ Moong Dal + Veg" },
+      { id: "wed_opt_b", label: "Dal Makhani + Aloo Gobhi", btnLabel: "2️⃣ Dal Makhani + Aloo" },
+    ],
+  },
+  thursday: {
+    title: "गुरुवार (Thursday) के लिए सब्जी चुनें:",
+    label: "गुरुवार (Thursday)",
+    description: "1️⃣ Rajma Masala + Aloo Beans\n2️⃣ Kadhi Pakora + Seasonal Veg",
+    options: [
+      { id: "thu_opt_a", label: "Rajma Masala + Aloo Beans", btnLabel: "1️⃣ Rajma + Aloo Beans" },
+      { id: "thu_opt_b", label: "Kadhi Pakora + Seasonal Veg", btnLabel: "2️⃣ Kadhi + Mix Veg" },
+    ],
+  },
+  friday: {
+    title: "शुक्रवार (Friday) के लिए सब्जी चुनें:",
+    label: "शुक्रवार (Friday)",
+    description: "1️⃣ Dal Makhani + Seasonal Veg\n2️⃣ Shahi Paneer + Dal Tadka",
+    options: [
+      { id: "fri_opt_a", label: "Dal Makhani + Seasonal Veg", btnLabel: "1️⃣ Dal Makhani + Veg" },
+      { id: "fri_opt_b", label: "Shahi Paneer + Dal Tadka", btnLabel: "2️⃣ Paneer + Dal Tadka" },
+    ],
+  },
+  saturday: {
+    title: "शनिवार (Saturday) के लिए सब्जी चुनें:",
+    label: "शनिवार (Saturday)",
+    description: "1️⃣ Kadhi Pakora + Aloo Jeera\n2️⃣ Moong Dal Fry + Aloo Beans",
+    options: [
+      { id: "sat_opt_a", label: "Kadhi Pakora + Aloo Jeera", btnLabel: "1️⃣ Kadhi + Aloo Jeera" },
+      { id: "sat_opt_b", label: "Moong Dal Fry + Aloo Beans", btnLabel: "2️⃣ Moong Dal + Beans" },
+    ],
+  },
+  sunday: {
+    title: "रविवार (Sunday) के लिए सब्जी चुनें:",
+    label: "रविवार (Sunday)",
+    description: "1️⃣ Shahi Paneer + Dal Tadka\n2️⃣ Paneer Bhurji + Dal Makhani",
+    options: [
+      { id: "sun_opt_a", label: "Shahi Paneer + Dal Tadka", btnLabel: "1️⃣ Paneer + Dal Tadka" },
+      { id: "sun_opt_b", label: "Paneer Bhurji + Dal Makhani", btnLabel: "2️⃣ Bhurji + Dal Makhani" },
+    ],
+  },
+};
+
 // ── Outbound message helpers ─────────────────────────────────
 
 async function sendWelcomeMenu(input: DispatchInboundInput) {
@@ -201,6 +275,7 @@ async function sendWelcomeMenu(input: DispatchInboundInput) {
           { id: "menu_reg", title: "3️⃣ Registration", description: "Register & order your tiffin" },
           { id: "menu_lang", title: "4️⃣ Language", description: "Select preferred language" },
           { id: "menu_support", title: "5️⃣ Support", description: "Get support or contact agent" },
+          { id: "menu_vote", title: "6️⃣ Tiffin Voting", description: "Vote for what to cook" },
         ],
       },
     ],
@@ -463,6 +538,7 @@ export async function dispatchAnnapurnaFlow(
       else if (cleanText === "3" || cleanText.includes("reg") || cleanText.includes("register") || cleanText.includes("order")) selection = "menu_reg";
       else if (cleanText === "4" || cleanText.includes("lang") || cleanText.includes("bhasha") || cleanText.includes("भाषा")) selection = "menu_lang";
       else if (cleanText === "5" || cleanText.includes("support") || cleanText.includes("help") || cleanText.includes("सहायता")) selection = "menu_support";
+      else if (cleanText === "6" || cleanText.includes("vote") || cleanText.includes("voting") || cleanText.includes("चुनाव") || cleanText.includes("मतदान")) selection = "menu_vote";
     }
 
     if (selection === "menu_menu") {
@@ -557,6 +633,35 @@ export async function dispatchAnnapurnaFlow(
         resolvedContext: input.resolvedContext,
       });
       await updateRunState("support_view");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    if (selection === "menu_vote") {
+      await engineSendInteractiveList({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        bodyText: "🗳️ *टिफिन वोटिंग (Tiffin Voting)*\n\nकृपया उस दिन को चुनें जिसके लिए आप मतदान करना चाहते हैं:",
+        buttonLabel: "दिन चुनें",
+        sections: [
+          {
+            title: "सप्ताह के दिन (Days)",
+            rows: [
+              { id: "day_monday", title: "सोमवार (Monday)" },
+              { id: "day_tuesday", title: "मंगलवार (Tuesday)" },
+              { id: "day_wednesday", title: "बुधवार (Wednesday)" },
+              { id: "day_thursday", title: "गुरुवार (Thursday)" },
+              { id: "day_friday", title: "शुक्रवार (Friday)" },
+              { id: "day_saturday", title: "शनिवार (Saturday)" },
+              { id: "day_sunday", title: "रविवार (Sunday)" },
+            ],
+          },
+        ],
+        resolvedContext: input.resolvedContext,
+      });
+
+      await updateRunState("menu_vote_day_list");
       return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
     }
 
@@ -1116,6 +1221,273 @@ export async function dispatchAnnapurnaFlow(
       conversationId,
       contactId,
       text: "🙏 आपका पेमेंट वेरिफिकेशन प्रगति पर है। हमारी टीम जल्द ही इसकी पुष्टि करेगी। किसी अन्य सहायता के लिए कृपया प्रतीक्षा करें या सहायता से संपर्क करें।",
+      resolvedContext: input.resolvedContext,
+    });
+    return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+  }
+
+  // STATE: menu_vote_day_list
+  if (currentState === "menu_vote_day_list") {
+    if (selection === "go_back") {
+      await sendWelcomeMenu(input);
+      await updateRunState("main_menu");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    let selectedDay: string | null = null;
+    if (selection && selection.startsWith("day_")) {
+      selectedDay = selection.replace("day_", "");
+    } else if (message.kind === "text") {
+      const cleanText = text.toLowerCase();
+      if (cleanText.includes("mon") || cleanText.includes("सोम")) selectedDay = "monday";
+      else if (cleanText.includes("tue") || cleanText.includes("मंग")) selectedDay = "tuesday";
+      else if (cleanText.includes("wed") || cleanText.includes("बुध")) selectedDay = "wednesday";
+      else if (cleanText.includes("thu") || cleanText.includes("गुरु")) selectedDay = "thursday";
+      else if (cleanText.includes("fri") || cleanText.includes("शुक्र")) selectedDay = "friday";
+      else if (cleanText.includes("sat") || cleanText.includes("शनि")) selectedDay = "saturday";
+      else if (cleanText.includes("sun") || cleanText.includes("रवि")) selectedDay = "sunday";
+    }
+
+    if (selectedDay && VOTING_OPTIONS[selectedDay]) {
+      const dayConfig = VOTING_OPTIONS[selectedDay];
+      
+      // Send interactive buttons for the selected day options
+      await engineSendInteractiveButtons({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        bodyText: `🗳️ *${dayConfig.title}*\n\n${dayConfig.description}\n\nकृपया अपनी पसंद की सब्जी जोड़ी चुनें:`,
+        buttons: dayConfig.options.map((opt) => ({
+          id: `vote_opt_${opt.id}`,
+          title: opt.btnLabel,
+        })),
+        resolvedContext: input.resolvedContext,
+      });
+
+      await updateRunState("menu_vote_day_selected", {
+        vote_selected_day: selectedDay,
+      });
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    // Reprompt day list
+    await engineSendInteractiveList({
+      accountId,
+      userId: input.userId,
+      conversationId,
+      contactId,
+      bodyText: "🗳️ *टिफिन वोटिंग (Tiffin Voting)*\n\nकृपया उस दिन को चुनें जिसके लिए आप मतदान करना चाहते हैं:",
+      buttonLabel: "दिन चुनें",
+      sections: [
+        {
+          title: "सप्ताह के दिन (Days)",
+          rows: [
+            { id: "day_monday", title: "सोमवार (Monday)" },
+            { id: "day_tuesday", title: "मंगलवार (Tuesday)" },
+            { id: "day_wednesday", title: "बुधवार (Wednesday)" },
+            { id: "day_thursday", title: "गुरुवार (Thursday)" },
+            { id: "day_friday", title: "शुक्रवार (Friday)" },
+            { id: "day_saturday", title: "शनिवार (Saturday)" },
+            { id: "day_sunday", title: "रविवार (Sunday)" },
+          ],
+        },
+      ],
+      resolvedContext: input.resolvedContext,
+    });
+    return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+  }
+
+  // STATE: menu_vote_day_selected
+  if (currentState === "menu_vote_day_selected") {
+    if (selection === "go_back") {
+      // Send interactive list of days
+      await engineSendInteractiveList({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        bodyText: "🗳️ *टिफिन वोटिंग (Tiffin Voting)*\n\nकृपया उस दिन को चुनें जिसके लिए आप मतदान करना चाहते हैं:",
+        buttonLabel: "दिन चुनें",
+        sections: [
+          {
+            title: "सप्ताह के दिन (Days)",
+            rows: [
+              { id: "day_monday", title: "सोमवार (Monday)" },
+              { id: "day_tuesday", title: "मंगलवार (Tuesday)" },
+              { id: "day_wednesday", title: "बुधवार (Wednesday)" },
+              { id: "day_thursday", title: "गुरुवार (Thursday)" },
+              { id: "day_friday", title: "शुक्रवार (Friday)" },
+              { id: "day_saturday", title: "शनिवार (Saturday)" },
+              { id: "day_sunday", title: "रविवार (Sunday)" },
+            ],
+          },
+        ],
+        resolvedContext: input.resolvedContext,
+      });
+
+      await updateRunState("menu_vote_day_list");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    const selectedDay = activeRun.vars.vote_selected_day as string;
+    const dayConfig = VOTING_OPTIONS[selectedDay];
+
+    let voteOptionId: string | null = null;
+    if (selection && selection.startsWith("vote_opt_")) {
+      voteOptionId = selection.replace("vote_opt_", "");
+    } else if (message.kind === "text") {
+      const cleanText = text.toLowerCase();
+      // Map 1/2 or keywords
+      if (cleanText === "1" || cleanText.includes("a") || cleanText.includes("first")) {
+        voteOptionId = dayConfig.options[0].id;
+      } else if (cleanText === "2" || cleanText.includes("b") || cleanText.includes("second")) {
+        voteOptionId = dayConfig.options[1].id;
+      }
+    }
+
+    if (voteOptionId && dayConfig.options.some((o) => o.id === voteOptionId)) {
+      // Save vote inside variables map
+      const votes: Record<string, string> = { ...((activeRun.vars.votes as Record<string, string>) || {}) };
+      votes[selectedDay] = voteOptionId;
+
+      // Update flow run variables in DB
+      await db
+        .from("flow_runs")
+        .update({
+          vars: {
+            ...activeRun.vars,
+            votes,
+          },
+        })
+        .eq("id", activeRun.id);
+
+      // Fetch all runs to calculate voting results percentages
+      const { data: voteRuns } = await db
+        .from("flow_runs")
+        .select("contact_id, vars")
+        .eq("account_id", accountId)
+        .order("started_at", { ascending: false })
+        .limit(500);
+
+      // Deduplicate on contact_id to count only the latest run per contact
+      const uniqueVotes: Record<string, Record<string, string>> = {};
+      for (const run of voteRuns || []) {
+        if (run.vars && run.vars.votes && run.contact_id) {
+          if (!uniqueVotes[run.contact_id]) {
+            uniqueVotes[run.contact_id] = run.vars.votes;
+          }
+        }
+      }
+
+      // Count votes for selected day
+      let totalVotes = 0;
+      const counts: Record<string, number> = {};
+      for (const opt of dayConfig.options) {
+        counts[opt.id] = 0;
+      }
+
+      for (const cid in uniqueVotes) {
+        const uVotes = uniqueVotes[cid];
+        const voteVal = uVotes[selectedDay];
+        if (voteVal && counts[voteVal] !== undefined) {
+          counts[voteVal]++;
+          totalVotes++;
+        }
+      }
+
+      // Format results message
+      let resultText = `🗳️ *${dayConfig.label} के लिए मतदान के परिणाम:*\n\n`;
+      for (const opt of dayConfig.options) {
+        const count = counts[opt.id] || 0;
+        const percentage = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+        resultText += `🔸 *${opt.label}*: *${percentage}%* (${count} vote${count !== 1 ? "s" : ""})\n`;
+      }
+      resultText += `\n📊 *कुल वोट (Total Votes):* ${totalVotes}\n\nआपका वोट दर्ज कर लिया गया है। धन्यवाद! 🙏`;
+
+      // Send results with navigation buttons
+      await engineSendInteractiveButtons({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        bodyText: resultText,
+        buttons: [
+          { id: "vote_go_days", title: "⬅️ Back to Days" },
+          { id: "go_back", title: "🏠 Main Menu" },
+        ],
+        resolvedContext: input.resolvedContext,
+      });
+
+      await updateRunState("menu_vote_result");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    // Reprompt selection
+    await engineSendInteractiveButtons({
+      accountId,
+      userId: input.userId,
+      conversationId,
+      contactId,
+      bodyText: `⚠️ *अमान्य चयन (Invalid Selection)*\n\n🗳️ *${dayConfig.title}*\n\n${dayConfig.description}\n\nकृपया अपनी पसंद की सब्जी जोड़ी चुनें:`,
+      buttons: dayConfig.options.map((opt) => ({
+        id: `vote_opt_${opt.id}`,
+        title: opt.btnLabel,
+      })),
+      resolvedContext: input.resolvedContext,
+    });
+    return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
+  }
+
+  // STATE: menu_vote_result
+  if (currentState === "menu_vote_result") {
+    if (selection === "vote_go_days" || text.toLowerCase().includes("day") || text === "1") {
+      // Send interactive list of days
+      await engineSendInteractiveList({
+        accountId,
+        userId: input.userId,
+        conversationId,
+        contactId,
+        bodyText: "🗳️ *टिफिन वोटिंग (Tiffin Voting)*\n\nकृपया उस दिन को चुनें जिसके लिए आप मतदान करना चाहते हैं:",
+        buttonLabel: "दिन चुनें",
+        sections: [
+          {
+            title: "सप्ताह के दिन (Days)",
+            rows: [
+              { id: "day_monday", title: "सोमवार (Monday)" },
+              { id: "day_tuesday", title: "मंगलवार (Tuesday)" },
+              { id: "day_wednesday", title: "बुधवार (Wednesday)" },
+              { id: "day_thursday", title: "गुरुवार (Thursday)" },
+              { id: "day_friday", title: "शुक्रवार (Friday)" },
+              { id: "day_saturday", title: "शनिवार (Saturday)" },
+              { id: "day_sunday", title: "रविवार (Sunday)" },
+            ],
+          },
+        ],
+        resolvedContext: input.resolvedContext,
+      });
+
+      await updateRunState("menu_vote_day_list");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    if (selection === "go_back" || text.toLowerCase().includes("menu") || text === "2") {
+      await sendWelcomeMenu(input);
+      await updateRunState("main_menu");
+      return { consumed: true, flow_run_id: activeRun.id, outcome: "advanced" };
+    }
+
+    // Reprompt navigation options
+    await engineSendInteractiveButtons({
+      accountId,
+      userId: input.userId,
+      conversationId,
+      contactId,
+      bodyText: "वोटिंग मेनू में वापस जाने या मुख्य मेनू पर लौटने के लिए नीचे दिए गए बटन चुनें: 👇",
+      buttons: [
+        { id: "vote_go_days", title: "⬅️ Back to Days" },
+        { id: "go_back", title: "🏠 Main Menu" },
+      ],
       resolvedContext: input.resolvedContext,
     });
     return { consumed: true, flow_run_id: activeRun.id, outcome: "fallback_fired" };
