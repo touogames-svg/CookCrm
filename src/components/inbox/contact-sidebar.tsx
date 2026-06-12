@@ -167,23 +167,29 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     const orderNumber = activeRun.vars.reg_order_number || "N/A";
     const referenceNo = paymentRef.trim();
 
-    // 1) Complete active flow run
-    const { error: runErr } = await supabase
-      .from("flow_runs")
-      .update({
-        status: "completed",
-        ended_at: new Date().toISOString(),
-        end_reason: "payment_verified_by_agent",
-        vars: {
-          ...activeRun.vars,
-          payment_ref: referenceNo,
+    // 1) Complete active flow run via server-side secure API
+    try {
+      const res = await fetch("/api/flows/runs/agent-action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      })
-      .eq("id", activeRun.id);
+        body: JSON.stringify({
+          runId: activeRun.id,
+          action: "confirm_payment",
+          paymentRef: referenceNo,
+        }),
+      });
 
-    if (runErr) {
-      console.error("Failed to complete flow run:", runErr);
-      alert("Failed to confirm payment.");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error("Failed to complete flow run:", errData.error || res.statusText);
+        alert("Failed to confirm payment: " + (errData.error || res.statusText));
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to fetch agent-action API:", err);
+      alert("Failed to confirm payment due to a network error.");
       return;
     }
 
@@ -226,25 +232,31 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     const supabase = createClient();
     const orderNumber = orderRun.vars.reg_order_number || "N/A";
 
-    const updatedVars = {
-      ...orderRun.vars,
-      dispatched: true,
-      rider_name: rider.name,
-      tracking_link: rider.trackingLink,
-      dispatched_at: new Date().toISOString(),
-    };
+    // 1) Update flow run variables in DB via server-side secure API
+    try {
+      const res = await fetch("/api/flows/runs/agent-action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          runId: orderRun.id,
+          action: "dispatch_order",
+          riderName: rider.name,
+          trackingLink: rider.trackingLink,
+        }),
+      });
 
-    // 1) Update flow run variables in DB
-    const { error: runErr } = await supabase
-      .from("flow_runs")
-      .update({
-        vars: updatedVars,
-      })
-      .eq("id", orderRun.id);
-
-    if (runErr) {
-      console.error("Failed to update flow run for dispatch:", runErr);
-      alert("Failed to dispatch order.");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error("Failed to update flow run for dispatch:", errData.error || res.statusText);
+        alert("Failed to dispatch order: " + (errData.error || res.statusText));
+        setDispatching(false);
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to fetch agent-action API for dispatch:", err);
+      alert("Failed to dispatch order due to a network error.");
       setDispatching(false);
       return;
     }
