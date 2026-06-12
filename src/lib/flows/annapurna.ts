@@ -747,18 +747,25 @@ export async function dispatchAnnapurnaFlow(
       else if (cleanText.includes("monthly") || cleanText.includes("3499")) selectedPlan = "plan_monthly";
       else if (cleanText.includes("executive") || cleanText.includes("1999")) selectedPlan = "plan_executive";
     }
-
     if (selectedPlan) {
-      await engineSendInteractiveButtons({
+      await engineSendInteractiveList({
         accountId,
         userId: input.userId,
         conversationId,
         contactId,
-        bodyText: "👥 *रजिस्ट्रेशन (4/6) — टिफिन मात्रा*\n\nकितने लोगों के लिए टिफिन चाहिए? (संख्या टाइप करें या नीचे से चुनें)",
-        buttons: [
-          { id: "qty_1", title: "1 व्यक्ति (1 Plate)" },
-          { id: "qty_2", title: "2 व्यक्ति (2 Plates)" },
-          { id: "qty_3", title: "3 व्यक्ति (3 Plates)" },
+        bodyText: "👥 *रजिस्ट्रेशन (4/6) — टिफिन मात्रा*\n\nकितने लोगों के लिए टिफिन चाहिए? कृपया नीचे दिए गए मेनू से मात्रा चुनें:",
+        buttonLabel: "मात्रा चुनें",
+        sections: [
+          {
+            title: "मात्रा (Quantity)",
+            rows: [
+              { id: "qty_1", title: "1 व्यक्ति (1 Plate)" },
+              { id: "qty_2", title: "2 व्यक्ति (2 Plates)" },
+              { id: "qty_3", title: "3 व्यक्ति (3 Plates)" },
+              { id: "qty_4", title: "4 व्यक्ति (4 Plates)" },
+              { id: "qty_5", title: "5 व्यक्ति (5 Plates)" },
+            ],
+          },
         ],
         resolvedContext: input.resolvedContext,
       });
@@ -826,7 +833,7 @@ export async function dispatchAnnapurnaFlow(
         contactId,
         bodyText: `📋 *रजिस्ट्रेशन (5/6) — ऑर्डर समरी*\n\nकृपया विवरण की जांच करें:\n👤 नाम: *${regName}*\n📱 मोबाइल: *${regPhone}*\n📍 लोकेशन: *${regLocation}*\n🍛 प्लान: *${getPlanName(planId)}*\n👥 मात्रा: *${qty} व्यक्ति*\n💰 कुल राशि: *₹${totalPrice}*\n\nक्या आप इस ऑर्डर को पक्का करना चाहते हैं?`,
         buttons: [
-          { id: "reg_confirm_order", title: "हाँ, ऑर्डर पक्का करें" },
+          { id: "reg_confirm_order", title: "हाँ, पक्का करें" },
           { id: "go_back", title: "रद्द करें" },
         ],
         resolvedContext: input.resolvedContext,
@@ -840,16 +847,24 @@ export async function dispatchAnnapurnaFlow(
     }
 
     // Reprompt qty
-    await engineSendInteractiveButtons({
+    await engineSendInteractiveList({
       accountId,
       userId: input.userId,
       conversationId,
       contactId,
-      bodyText: "👥 *रजिस्ट्रेशन (4/6) — टिफिन मात्रा*\n\nकितने लोगों के लिए टिफिन चाहिए? (संख्या टाइप करें या नीचे से चुनें)",
-      buttons: [
-        { id: "qty_1", title: "1 व्यक्ति (1 Plate)" },
-        { id: "qty_2", title: "2 व्यक्ति (2 Plates)" },
-        { id: "qty_3", title: "3 व्यक्ति (3 Plates)" },
+      bodyText: "👥 *रजिस्ट्रेशन (4/6) — टिफिन मात्रा*\n\nकितने लोगों के लिए टिफिन चाहिए? कृपया नीचे दिए गए मेनू से मात्रा चुनें:",
+      buttonLabel: "मात्रा चुनें",
+      sections: [
+        {
+          title: "मात्रा (Quantity)",
+          rows: [
+            { id: "qty_1", title: "1 व्यक्ति (1 Plate)" },
+            { id: "qty_2", title: "2 व्यक्ति (2 Plates)" },
+            { id: "qty_3", title: "3 व्यक्ति (3 Plates)" },
+            { id: "qty_4", title: "4 व्यक्ति (4 Plates)" },
+            { id: "qty_5", title: "5 व्यक्ति (5 Plates)" },
+          ],
+        },
       ],
       resolvedContext: input.resolvedContext,
     });
