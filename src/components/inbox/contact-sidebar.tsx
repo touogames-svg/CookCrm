@@ -450,11 +450,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                   <select
                     value={selectedRiderId}
                     onChange={(e) => setSelectedRiderId(e.target.value)}
-                    className="w-full rounded border border-slate-700 bg-slate-800/80 px-2 py-1 text-xs text-white focus:border-amber-500 focus:outline-none"
+                    className="h-9 w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 text-sm text-slate-200 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                   >
-                    <option value="" className="bg-slate-900">-- Select Rider --</option>
+                    <option value="" className="bg-slate-900 text-slate-400">-- Select Rider --</option>
                     {RIDERS.map((rider) => (
-                      <option key={rider.id} value={rider.id} className="bg-slate-900">
+                      <option key={rider.id} value={rider.id} className="bg-slate-900 text-slate-100">
                         {rider.name}
                       </option>
                     ))}

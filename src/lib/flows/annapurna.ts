@@ -195,8 +195,8 @@ const VOTING_OPTIONS: Record<
     label: "सोमवार (Monday)",
     description: "1️⃣ Dal Tadka + Aloo Gobhi\n2️⃣ Chole Masala + Paneer",
     options: [
-      { id: "mon_opt_a", label: "Dal Tadka + Aloo Gobhi", btnLabel: "1️⃣ Dal Tadka + Aloo" },
-      { id: "mon_opt_b", label: "Chole Masala + Paneer", btnLabel: "2️⃣ Chole + Paneer" },
+      { id: "mon_opt_a", label: "Dal Tadka + Aloo Gobhi", btnLabel: "Dal Tadka + Aloo" },
+      { id: "mon_opt_b", label: "Chole Masala + Paneer", btnLabel: "Chole + Paneer" },
     ],
   },
   tuesday: {
@@ -204,8 +204,8 @@ const VOTING_OPTIONS: Record<
     label: "मंगलवार (Tuesday)",
     description: "1️⃣ Chole Masala + Aloo Matar\n2️⃣ Rajma Masala + Seasonal Veg",
     options: [
-      { id: "tue_opt_a", label: "Chole Masala + Aloo Matar", btnLabel: "1️⃣ Chole + Aloo Matar" },
-      { id: "tue_opt_b", label: "Rajma Masala + Seasonal Veg", btnLabel: "2️⃣ Rajma + Mix Veg" },
+      { id: "tue_opt_a", label: "Chole Masala + Aloo Matar", btnLabel: "Chole + Aloo Matar" },
+      { id: "tue_opt_b", label: "Rajma Masala + Seasonal Veg", btnLabel: "Rajma + Mix Veg" },
     ],
   },
   wednesday: {
@@ -213,8 +213,8 @@ const VOTING_OPTIONS: Record<
     label: "बुधवार (Wednesday)",
     description: "1️⃣ Moong Dal Fry + Mix Veg\n2️⃣ Dal Makhani + Aloo Gobhi",
     options: [
-      { id: "wed_opt_a", label: "Moong Dal Fry + Mix Veg", btnLabel: "1️⃣ Moong Dal + Veg" },
-      { id: "wed_opt_b", label: "Dal Makhani + Aloo Gobhi", btnLabel: "2️⃣ Dal Makhani + Aloo" },
+      { id: "wed_opt_a", label: "Moong Dal Fry + Mix Veg", btnLabel: "Moong Dal + Veg" },
+      { id: "wed_opt_b", label: "Dal Makhani + Aloo Gobhi", btnLabel: "Dal Makhani + Aloo" },
     ],
   },
   thursday: {
@@ -222,8 +222,8 @@ const VOTING_OPTIONS: Record<
     label: "गुरुवार (Thursday)",
     description: "1️⃣ Rajma Masala + Aloo Beans\n2️⃣ Kadhi Pakora + Seasonal Veg",
     options: [
-      { id: "thu_opt_a", label: "Rajma Masala + Aloo Beans", btnLabel: "1️⃣ Rajma + Aloo Beans" },
-      { id: "thu_opt_b", label: "Kadhi Pakora + Seasonal Veg", btnLabel: "2️⃣ Kadhi + Mix Veg" },
+      { id: "thu_opt_a", label: "Rajma Masala + Aloo Beans", btnLabel: "Rajma + Aloo Beans" },
+      { id: "thu_opt_b", label: "Kadhi Pakora + Seasonal Veg", btnLabel: "Kadhi + Mix Veg" },
     ],
   },
   friday: {
@@ -231,8 +231,8 @@ const VOTING_OPTIONS: Record<
     label: "शुक्रवार (Friday)",
     description: "1️⃣ Dal Makhani + Seasonal Veg\n2️⃣ Shahi Paneer + Dal Tadka",
     options: [
-      { id: "fri_opt_a", label: "Dal Makhani + Seasonal Veg", btnLabel: "1️⃣ Dal Makhani + Veg" },
-      { id: "fri_opt_b", label: "Shahi Paneer + Dal Tadka", btnLabel: "2️⃣ Paneer + Dal Tadka" },
+      { id: "fri_opt_a", label: "Dal Makhani + Seasonal Veg", btnLabel: "Dal Makhani + Veg" },
+      { id: "fri_opt_b", label: "Shahi Paneer + Dal Tadka", btnLabel: "Paneer + Dal Tadka" },
     ],
   },
   saturday: {
@@ -240,8 +240,8 @@ const VOTING_OPTIONS: Record<
     label: "शनिवार (Saturday)",
     description: "1️⃣ Kadhi Pakora + Aloo Jeera\n2️⃣ Moong Dal Fry + Aloo Beans",
     options: [
-      { id: "sat_opt_a", label: "Kadhi Pakora + Aloo Jeera", btnLabel: "1️⃣ Kadhi + Aloo Jeera" },
-      { id: "sat_opt_b", label: "Moong Dal Fry + Aloo Beans", btnLabel: "2️⃣ Moong Dal + Beans" },
+      { id: "sat_opt_a", label: "Kadhi Pakora + Aloo Jeera", btnLabel: "Kadhi + Aloo Jeera" },
+      { id: "sat_opt_b", label: "Moong Dal Fry + Aloo Beans", btnLabel: "Moong Dal + Beans" },
     ],
   },
   sunday: {
@@ -249,8 +249,8 @@ const VOTING_OPTIONS: Record<
     label: "रविवार (Sunday)",
     description: "1️⃣ Shahi Paneer + Dal Tadka\n2️⃣ Paneer Bhurji + Dal Makhani",
     options: [
-      { id: "sun_opt_a", label: "Shahi Paneer + Dal Tadka", btnLabel: "1️⃣ Paneer + Dal Tadka" },
-      { id: "sun_opt_b", label: "Paneer Bhurji + Dal Makhani", btnLabel: "2️⃣ Bhurji + Dal Makhani" },
+      { id: "sun_opt_a", label: "Shahi Paneer + Dal Tadka", btnLabel: "Paneer + Dal Tadka" },
+      { id: "sun_opt_b", label: "Paneer Bhurji + Dal Makhani", btnLabel: "Bhurji + Makhani" },
     ],
   },
 };
@@ -1347,8 +1347,12 @@ export async function dispatchAnnapurnaFlow(
     }
 
     if (voteOptionId && dayConfig.options.some((o) => o.id === voteOptionId)) {
+      // Check if user already voted for this day
+      const oldVotes: Record<string, string> = (activeRun.vars.votes as Record<string, string>) || {};
+      const alreadyVoted = !!oldVotes[selectedDay];
+
       // Save vote inside variables map
-      const votes: Record<string, string> = { ...((activeRun.vars.votes as Record<string, string>) || {}) };
+      const votes: Record<string, string> = { ...oldVotes };
       votes[selectedDay] = voteOptionId;
 
       // Update flow run variables in DB
@@ -1375,7 +1379,7 @@ export async function dispatchAnnapurnaFlow(
       for (const run of voteRuns || []) {
         if (run.vars && run.vars.votes && run.contact_id) {
           if (!uniqueVotes[run.contact_id]) {
-            uniqueVotes[run.contact_id] = run.vars.votes;
+            uniqueVotes[run.contact_id] = run.vars.votes as Record<string, string>;
           }
         }
       }
@@ -1403,7 +1407,12 @@ export async function dispatchAnnapurnaFlow(
         const percentage = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
         resultText += `🔸 *${opt.label}*: *${percentage}%* (${count} vote${count !== 1 ? "s" : ""})\n`;
       }
-      resultText += `\n📊 *कुल वोट (Total Votes):* ${totalVotes}\n\nआपका वोट दर्ज कर लिया गया है। धन्यवाद! 🙏`;
+      resultText += `\n📊 *कुल वोट (Total Votes):* ${totalVotes}\n\n`;
+      if (alreadyVoted) {
+        resultText += `ℹ️ *आपने इस दिन के लिए पहले भी वोट किया था। आपका नया वोट अपडेट कर दिया गया है!*`;
+      } else {
+        resultText += `आपका वोट दर्ज कर लिया गया है। धन्यवाद! 🙏`;
+      }
 
       // Send results with navigation buttons
       await engineSendInteractiveButtons({
