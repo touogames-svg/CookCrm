@@ -20,6 +20,23 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 
+function getPlanName(planId: string): string {
+  switch (planId) {
+    case "plan_trial":
+      return "Trial Plan (₹49)";
+    case "plan_daily":
+      return "Daily Plan (₹79)";
+    case "plan_weekly":
+      return "Weekly Plan (₹999)";
+    case "plan_monthly":
+      return "Monthly Plan (₹3499)";
+    case "plan_executive":
+      return "Executive Plan (₹1999)";
+    default:
+      return planId;
+  }
+}
+
 interface ContactSidebarProps {
   contact: Contact | null;
 }
@@ -32,14 +49,15 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const [activeRun, setActiveRun] = useState<any>(null);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    // Fetch deals, notes, tags, and active flow run in parallel
+    const [dealsRes, notesRes, tagsRes, runRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
@@ -54,6 +72,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         .from("contact_tags")
         .select("id, tag_id, tags(*)")
         .eq("contact_id", contact.id),
+      supabase
+        .from("flow_runs")
+        .select("*")
+        .eq("contact_id", contact.id)
+        .eq("status", "active")
+        .maybeSingle(),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
@@ -66,6 +90,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           contact_tag_id: ct.id as string,
         }));
       setTags(mapped);
+    }
+    if (runRes.data) {
+      setActiveRun(runRes.data);
+    } else {
+      setActiveRun(null);
     }
   }, [contact]);
 
@@ -114,6 +143,55 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
     setAddingNote(false);
   }, [contact, newNote, accountId]);
+
+  const handleConfirmPayment = useCallback(async () => {
+    if (!contact || !activeRun) return;
+    const supabase = createClient();
+
+    // 1) Complete active flow run
+    const { error: runErr } = await supabase
+      .from("flow_runs")
+      .update({
+        status: "completed",
+        ended_at: new Date().toISOString(),
+        end_reason: "payment_verified_by_agent",
+      })
+      .eq("id", activeRun.id);
+
+    if (runErr) {
+      console.error("Failed to complete flow run:", runErr);
+      alert("Failed to confirm payment.");
+      return;
+    }
+
+    // 2) Send WhatsApp confirmation message by posting to /api/whatsapp/send
+    const { data: conv } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("contact_id", contact.id)
+      .maybeSingle();
+
+    if (conv) {
+      try {
+        await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            conversation_id: conv.id,
+            message_type: "text",
+            content_text: "🎉 *पेमेंट कन्फर्म हो गया है!*\n\nमाँ अन्नपूर्णा रसोई की ओर से आपका भुगतान प्राप्त हो गया है। आपकी सब्सक्रिप्शन अब एक्टिव है। स्वादिष्ट और शुद्ध भोजन के लिए धन्यवाद! 🙏",
+          }),
+        });
+      } catch (sendErr) {
+        console.error("Failed to send WhatsApp confirmation:", sendErr);
+      }
+    }
+
+    setActiveRun(null);
+    fetchContactData();
+  }, [contact, activeRun, fetchContactData]);
 
   if (!contact) {
     return (
@@ -202,6 +280,47 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               )}
             </div>
           </div>
+
+          {/* Active Tiffin Registration */}
+          {activeRun && activeRun.current_node_key === "reg_verification" && (
+            <>
+              {/* Divider */}
+              <div className="my-4 border-t border-slate-800" />
+              
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+                <h4 className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wider">
+                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                  Payment Verification
+                </h4>
+                <div className="mt-2 text-xs space-y-1 text-slate-300">
+                  <p>🍛 Plan: <span className="font-semibold text-white">{getPlanName(activeRun.vars.reg_plan)}</span></p>
+                  <p>👥 Plates: <span className="font-semibold text-white">{activeRun.vars.reg_qty}</span></p>
+                  <p>💰 Amount: <span className="font-semibold text-white">₹{activeRun.vars.reg_price}</span></p>
+                  {activeRun.vars.reg_location && (
+                    <p className="truncate">📍 Location: <span className="text-white">{activeRun.vars.reg_location}</span></p>
+                  )}
+                  {activeRun.vars.payment_screenshot && (
+                    <div className="mt-2">
+                      <a
+                        href={activeRun.vars.payment_screenshot}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-emerald-400 underline hover:text-emerald-300 flex items-center gap-1"
+                      >
+                        📄 View Payment Screenshot
+                      </a>
+                    </div>
+                  )}
+                </div>
+                <Button
+                  onClick={handleConfirmPayment}
+                  className="mt-3 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-1.5 h-auto"
+                >
+                  Confirm Payment
+                </Button>
+              </div>
+            </>
+          )}
 
           {/* Divider */}
           <div className="my-4 border-t border-slate-800" />

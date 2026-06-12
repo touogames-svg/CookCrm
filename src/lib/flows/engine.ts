@@ -803,59 +803,14 @@ async function advanceCurrentNodeKey(
 
 // ============================================================
 // Public entry point — the webhook calls this on every inbound.
+import { dispatchAnnapurnaFlow } from "./annapurna";
+
+// ============================================================
+// Public entry point — the webhook calls this on every inbound.
 export async function dispatchInboundToFlows(
   input: DispatchInboundInput & { isFirstInboundMessage: boolean },
 ): Promise<DispatchInboundResult> {
-  const db = supabaseAdmin();
-  try {
-    const activeRun = await loadActiveRunForContact(
-      db,
-      input.accountId,
-      input.contactId,
-    );
-
-    // Idempotency — only matters if there's already a run for this
-    // contact. For new runs, the partial unique index catches duplicate
-    // starts at INSERT time.
-    if (activeRun) {
-      const dupe = await isDuplicateInbound(
-        db,
-        input.accountId,
-        input.contactId,
-        input.message.meta_message_id,
-      );
-      if (dupe) {
-        return {
-          consumed: true,
-          flow_run_id: activeRun.id,
-          outcome: "duplicate_inbound_ignored",
-        };
-      }
-      // One SELECT for the whole flow's nodes — advance loop is now
-      // in-memory. See loadAllNodes.
-      const nodes = await loadAllNodes(db, activeRun.flow_id);
-      return handleReplyForActiveRun(db, activeRun, input.message, nodes, input.resolvedContext);
-    }
-
-    // No active run → look for a flow whose entry trigger matches.
-    const flow = await findEntryFlow(
-      db,
-      input.accountId,
-      input.message,
-      input.isFirstInboundMessage,
-    );
-    if (!flow || !flow.entry_node_id) {
-      return { consumed: false, outcome: "no_match" };
-    }
-    const nodes = await loadAllNodes(db, flow.id);
-    return startNewRun(db, flow, input, nodes);
-  } catch (err) {
-    console.error(
-      "[flows] dispatchInboundToFlows threw:",
-      err instanceof Error ? err.message : err,
-    );
-    return { consumed: false, outcome: "no_match" };
-  }
+  return dispatchAnnapurnaFlow(input);
 }
 
 async function handleReplyForActiveRun(
