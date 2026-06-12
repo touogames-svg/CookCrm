@@ -698,7 +698,7 @@ export async function dispatchAnnapurnaFlow(
         buttonLabel: "प्लान देखें",
         sections: [
           {
-            title: "टिफिन प्लान्स (Tiffin Plans)",
+            title: "टिफिन प्लान (Plans)",
             rows: [
               { id: "plan_trial", title: "Trial Plan (₹49)", description: "पहली थाली सिर्फ ₹49" },
               { id: "plan_daily", title: "Daily Plan (₹79)", description: "1 समय का टिफिन" },
@@ -777,7 +777,7 @@ export async function dispatchAnnapurnaFlow(
       buttonLabel: "प्लान देखें",
       sections: [
         {
-          title: "टिफिन प्लान्स (Tiffin Plans)",
+          title: "टिफिन प्लान (Plans)",
           rows: [
             { id: "plan_trial", title: "Trial Plan (₹49)", description: "पहली थाली सिर्फ ₹49" },
             { id: "plan_daily", title: "Daily Plan (₹79)", description: "1 समय का टिफिन" },
