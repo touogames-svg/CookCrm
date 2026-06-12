@@ -57,6 +57,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [activeRun, setActiveRun] = useState<any>(null);
+  const [orderRun, setOrderRun] = useState<any>(null);
   const [paymentRef, setPaymentRef] = useState("");
   const [selectedRiderId, setSelectedRiderId] = useState("");
   const [dispatching, setDispatching] = useState(false);
@@ -66,8 +67,8 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
     const supabase = createClient();
 
-    // Fetch deals, notes, tags, and latest flow run in parallel
-    const [dealsRes, notesRes, tagsRes, runRes] = await Promise.all([
+    // Fetch deals, notes, tags, and recent flow runs in parallel
+    const [dealsRes, notesRes, tagsRes, runsRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
@@ -87,8 +88,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         .select("*")
         .eq("contact_id", contact.id)
         .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+        .limit(50),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
@@ -102,10 +102,15 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           }));
       setTags(mapped);
     }
-    if (runRes.data) {
-      setActiveRun(runRes.data);
+    if (runsRes.data) {
+      const runs = runsRes.data;
+      const active = runs.find((r) => r.status === "active");
+      const order = runs.find((r) => r.vars && r.vars.reg_order_number);
+      setActiveRun(active || null);
+      setOrderRun(order || null);
     } else {
       setActiveRun(null);
+      setOrderRun(null);
     }
   }, [contact]);
 
@@ -213,16 +218,16 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   }, [contact, activeRun, paymentRef, fetchContactData]);
 
   const handleDispatchOrder = useCallback(async () => {
-    if (!contact || !activeRun || !selectedRiderId) return;
+    if (!contact || !orderRun || !selectedRiderId) return;
     const rider = RIDERS.find((r) => r.id === selectedRiderId);
     if (!rider) return;
 
     setDispatching(true);
     const supabase = createClient();
-    const orderNumber = activeRun.vars.reg_order_number || "N/A";
+    const orderNumber = orderRun.vars.reg_order_number || "N/A";
 
     const updatedVars = {
-      ...activeRun.vars,
+      ...orderRun.vars,
       dispatched: true,
       rider_name: rider.name,
       tracking_link: rider.trackingLink,
@@ -235,7 +240,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       .update({
         vars: updatedVars,
       })
-      .eq("id", activeRun.id);
+      .eq("id", orderRun.id);
 
     if (runErr) {
       console.error("Failed to update flow run for dispatch:", runErr);
@@ -272,7 +277,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     setSelectedRiderId("");
     setDispatching(false);
     fetchContactData();
-  }, [contact, activeRun, selectedRiderId, fetchContactData]);
+  }, [contact, orderRun, selectedRiderId, fetchContactData]);
 
   if (!contact) {
     return (
