@@ -104,7 +104,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
     if (runsRes.data) {
       const runs = runsRes.data;
-      const active = runs.find((r) => r.status === "active");
+      const active = runs.find((r) => r.status === "active" || r.status === "paused_by_agent");
       const order = runs.find((r) => r.vars && r.vars.reg_order_number);
       setActiveRun(active || null);
       setOrderRun(order || null);
@@ -422,11 +422,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           )}
 
           {/* Dispatch Tiffin Order */}
-          {activeRun && 
-            activeRun.status === "completed" && 
-            activeRun.vars && 
-            activeRun.vars.reg_order_number && 
-            !activeRun.vars.dispatched && (
+          {orderRun && 
+            (orderRun.status === "completed" || orderRun.vars.payment_ref) && 
+            orderRun.vars && 
+            orderRun.vars.reg_order_number && 
+            !orderRun.vars.dispatched && (
             <>
               {/* Divider */}
               <div className="my-4 border-t border-slate-800" />
@@ -437,11 +437,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                   Dispatch Tiffin Order
                 </h4>
                 <div className="mt-2 text-xs space-y-1 text-slate-300">
-                  <p>📦 Order No: <span className="font-semibold text-white">{activeRun.vars.reg_order_number}</span></p>
-                  <p>🍛 Plan: <span className="font-semibold text-white">{getPlanName(activeRun.vars.reg_plan)}</span></p>
-                  <p>👥 Plates: <span className="font-semibold text-white">{activeRun.vars.reg_qty}</span></p>
-                  {activeRun.vars.reg_location && (
-                    <p className="truncate">📍 Location: <span className="text-white">{activeRun.vars.reg_location}</span></p>
+                  <p>📦 Order No: <span className="font-semibold text-white">{orderRun.vars.reg_order_number}</span></p>
+                  <p>🍛 Plan: <span className="font-semibold text-white">{getPlanName(orderRun.vars.reg_plan)}</span></p>
+                  <p>👥 Plates: <span className="font-semibold text-white">{orderRun.vars.reg_qty}</span></p>
+                  {orderRun.vars.reg_location && (
+                    <p className="truncate">📍 Location: <span className="text-white">{orderRun.vars.reg_location}</span></p>
                   )}
                 </div>
 
@@ -473,9 +473,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           )}
 
           {/* Dispatched Status Panel */}
-          {activeRun && 
-            activeRun.vars && 
-            activeRun.vars.dispatched && (
+          {orderRun && 
+            orderRun.vars && 
+            orderRun.vars.dispatched && (
             <>
               {/* Divider */}
               <div className="my-4 border-t border-slate-800" />
@@ -486,15 +486,15 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                   Order Dispatched
                 </h4>
                 <div className="mt-2 text-xs space-y-1 text-slate-300">
-                  <p>📦 Order No: <span className="font-semibold text-white">{activeRun.vars.reg_order_number}</span></p>
-                  <p>👤 Rider: <span className="font-semibold text-white">{activeRun.vars.rider_name}</span></p>
-                  {activeRun.vars.dispatched_at && (
-                    <p>🕒 Dispatched At: <span className="text-white">{format(new Date(activeRun.vars.dispatched_at), "MMM d, yyyy HH:mm")}</span></p>
+                  <p>📦 Order No: <span className="font-semibold text-white">{orderRun.vars.reg_order_number}</span></p>
+                  <p>👤 Rider: <span className="font-semibold text-white">{orderRun.vars.rider_name}</span></p>
+                  {orderRun.vars.dispatched_at && (
+                    <p>🕒 Dispatched At: <span className="text-white">{format(new Date(orderRun.vars.dispatched_at), "MMM d, yyyy HH:mm")}</span></p>
                   )}
-                  {activeRun.vars.tracking_link && (
+                  {orderRun.vars.tracking_link && (
                     <div className="mt-2">
                       <a
-                        href={activeRun.vars.tracking_link}
+                        href={orderRun.vars.tracking_link}
                         target="_blank"
                         rel="noreferrer"
                         className="text-[11px] text-blue-400 underline hover:text-blue-300 flex items-center gap-1"
